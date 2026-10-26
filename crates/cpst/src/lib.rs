@@ -1,6 +1,12 @@
 use std::io::{self, Read, Write};
+#[cfg(target_os = "linux")]
+use std::sync::mpsc;
+#[cfg(target_os = "linux")]
+use std::time::{Duration, Instant};
 
 use arboard::{Clipboard, ImageData};
+#[cfg(target_os = "linux")]
+use arboard::{GetExtLinux, LinuxClipboardKind, SetExtLinux};
 
 const PNG_SIGNATURE: &[u8] = b"\x89PNG\r\n\x1a\n";
 
@@ -42,10 +48,6 @@ pub fn run_daemon() -> Result<(), String> {
 
     #[cfg(target_os = "linux")]
     {
-        use arboard::{GetExtLinux, LinuxClipboardKind, SetExtLinux};
-        use std::sync::mpsc;
-        use std::time::{Duration, Instant};
-
         let content = parse_content(&input)?;
         drop(input);
         let expected = content.clone();
@@ -54,20 +56,7 @@ pub fn run_daemon() -> Result<(), String> {
         std::thread::Builder::new()
             .name("cpst-clipboard-provider".to_owned())
             .spawn(move || {
-                let result = (|| {
-                    let mut clipboard = Clipboard::new()
-                        .map_err(|error| format!("failed to open clipboard: {error}"))?;
-                    let operation = clipboard
-                        .set()
-                        .clipboard(LinuxClipboardKind::Clipboard)
-                        .wait();
-                    match content {
-                        Content::Text(text) => operation.text(text),
-                        Content::Image(image) => operation.image(image),
-                    }
-                    .map_err(|error| format!("failed to set clipboard: {error}"))
-                })();
-                let _ = sender.send(result);
+                let _ = sender.send(provide_selection(content));
             })
             .map_err(|error| format!("failed to start clipboard provider: {error}"))?;
 
@@ -86,23 +75,7 @@ pub fn run_daemon() -> Result<(), String> {
                 Err(mpsc::TryRecvError::Empty) => {}
             }
 
-            let readback = match &expected {
-                Content::Text(text) => probe
-                    .get()
-                    .clipboard(LinuxClipboardKind::Clipboard)
-                    .text()
-                    .map(|actual| actual == *text),
-                Content::Image(image) => probe
-                    .get()
-                    .clipboard(LinuxClipboardKind::Clipboard)
-                    .image()
-                    .map(|actual| {
-                        actual.width == image.width
-                            && actual.height == image.height
-                            && actual.bytes == image.bytes
-                    }),
-            };
-            let confirmed = match readback {
+            let confirmed = match selection_matches(&mut probe, &expected) {
                 Ok(confirmed) => confirmed,
                 Err(error) => {
                     last_probe_error = Some(error);
@@ -134,6 +107,44 @@ pub fn run_daemon() -> Result<(), String> {
     }
 }
 
+#[cfg(target_os = "linux")]
+fn provide_selection(content: Content) -> Result<(), String> {
+    let mut clipboard =
+        Clipboard::new().map_err(|error| format!("failed to open clipboard: {error}"))?;
+    let operation = clipboard
+        .set()
+        .clipboard(LinuxClipboardKind::Clipboard)
+        .wait();
+    match content {
+        Content::Text(text) => operation.text(text),
+        Content::Image(image) => operation.image(image),
+    }
+    .map_err(|error| format!("failed to set clipboard: {error}"))
+}
+
+#[cfg(target_os = "linux")]
+fn selection_matches(
+    clipboard: &mut Clipboard,
+    expected: &Content,
+) -> Result<bool, arboard::Error> {
+    match expected {
+        Content::Text(text) => clipboard
+            .get()
+            .clipboard(LinuxClipboardKind::Clipboard)
+            .text()
+            .map(|actual| actual == *text),
+        Content::Image(image) => clipboard
+            .get()
+            .clipboard(LinuxClipboardKind::Clipboard)
+            .image()
+            .map(|actual| {
+                actual.width == image.width
+                    && actual.height == image.height
+                    && actual.bytes == image.bytes
+            }),
+    }
+}
+
 fn read_stdin() -> Result<Vec<u8>, String> {
     let mut input = Vec::new();
     io::stdin()
@@ -148,20 +159,21 @@ fn parse_content(input: &[u8]) -> Result<Content, String> {
             .map_err(|error| format!("failed to decode PNG from stdin: {error}"))?
             .into_rgba8();
         let (width, height) = image.dimensions();
-        Ok(Content::Image(ImageData {
+        return Ok(Content::Image(ImageData {
             width: width as usize,
             height: height as usize,
             bytes: image.into_raw().into(),
-        }))
-    } else {
-        let text = std::str::from_utf8(input)
-            .map_err(|_| "stdin is neither UTF-8 text nor a PNG image".to_owned())?;
-        Ok(Content::Text(text.to_owned()))
+        }));
     }
+
+    let text = std::str::from_utf8(input)
+        .map_err(|_| "stdin is neither UTF-8 text nor a PNG image".to_owned())?;
+    Ok(Content::Text(text.to_owned()))
 }
 
 #[cfg(target_os = "linux")]
 fn spawn_daemon(input: Vec<u8>) -> Result<(), String> {
+    use std::io::BufRead;
     use std::process::{Command as ProcessCommand, Stdio};
 
     let executable = std::env::current_exe()
@@ -186,7 +198,6 @@ fn spawn_daemon(input: Vec<u8>) -> Result<(), String> {
     drop(stdin);
 
     let mut response = String::new();
-    use std::io::BufRead;
     io::BufReader::new(
         child
             .stdout
@@ -206,16 +217,15 @@ pub fn paste() -> Result<(), String> {
     let mut clipboard =
         Clipboard::new().map_err(|error| format!("failed to open clipboard: {error}"))?;
     let text = get_text(&mut clipboard)?;
-    io::stdout()
+    let mut stdout = io::stdout();
+    stdout
         .write_all(text.as_bytes())
-        .and_then(|_| io::stdout().flush())
+        .and_then(|_| stdout.flush())
         .map_err(|error| format!("failed to write stdout: {error}"))
 }
 
 #[cfg(target_os = "linux")]
 fn get_text(clipboard: &mut Clipboard) -> Result<String, String> {
-    use arboard::{GetExtLinux, LinuxClipboardKind};
-
     clipboard
         .get()
         .clipboard(LinuxClipboardKind::Clipboard)
