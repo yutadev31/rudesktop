@@ -1,4 +1,9 @@
-use std::{collections::HashMap, error::Error};
+use std::{
+    collections::{HashMap, HashSet},
+    error::Error,
+    sync::mpsc::{self, Receiver, Sender, TryRecvError},
+    thread,
+};
 
 use cosmic_text::{
     Attrs, Buffer, Color as TextColor, Family, FontSystem, Metrics, Shaping, SwashCache, Wrap,
@@ -15,19 +20,61 @@ pub struct Renderer {
     font_system: FontSystem,
     swash_cache: SwashCache,
     config: Config,
-    loader: Loader,
     icons: HashMap<String, Option<Icon>>,
+    pending_icons: HashSet<String>,
+    icon_requests: Sender<String>,
+    icon_results: Receiver<(String, Option<Icon>)>,
+    icon_worker_failed: bool,
 }
 
 impl Renderer {
-    pub fn new(config: &Config) -> Self {
-        Self {
+    pub fn new(config: &Config) -> Result<Self, Box<dyn Error>> {
+        let (icon_requests, requests) = mpsc::channel::<String>();
+        let (results, icon_results) = mpsc::channel();
+        let theme = config.icon_theme.clone();
+        thread::Builder::new()
+            .name("rumenu-icons".into())
+            .spawn(move || {
+                let loader = Loader::new([theme]);
+                while let Ok(name) = requests.recv() {
+                    let icon = loader.load(&name, ICON_SIZE, RasterSize::Target);
+                    if results.send((name, icon)).is_err() {
+                        break;
+                    }
+                }
+            })?;
+        Ok(Self {
             font_system: FontSystem::new(),
             swash_cache: SwashCache::new(),
             config: config.clone(),
-            loader: Loader::new([config.icon_theme.as_str()]),
             icons: HashMap::new(),
+            pending_icons: HashSet::new(),
+            icon_requests,
+            icon_results,
+            icon_worker_failed: false,
+        })
+    }
+
+    pub fn collect_icons(&mut self) -> bool {
+        let mut changed = false;
+        loop {
+            match self.icon_results.try_recv() {
+                Ok((name, icon)) => {
+                    self.pending_icons.remove(&name);
+                    self.icons.insert(name, icon);
+                    changed = true;
+                }
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => {
+                    if !self.icon_worker_failed && !self.pending_icons.is_empty() {
+                        tracing::error!("icon loader stopped before completing pending requests");
+                        self.icon_worker_failed = true;
+                    }
+                    break;
+                }
+            }
         }
+        changed
     }
 
     pub fn render(
@@ -76,11 +123,10 @@ impl Renderer {
                 );
             }
             if let Some(icon) = &entry.icon {
-                let pixels = self
-                    .icons
-                    .entry(icon.clone())
-                    .or_insert_with(|| self.loader.load(icon, ICON_SIZE, RasterSize::Target));
-                if let Some(pixels) = pixels {
+                if !self.icons.contains_key(icon) && self.pending_icons.insert(icon.clone()) {
+                    self.icon_requests.send(icon.clone())?;
+                }
+                if let Some(Some(pixels)) = self.icons.get(icon) {
                     draw_icon(&mut pixmap, pixels, 22, y + 5);
                 }
             }
@@ -229,6 +275,10 @@ fn draw_icon(pixmap: &mut Pixmap, icon: &Icon, x: i32, y: i32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::{
+        fs,
+        time::{Duration, Instant},
+    };
 
     #[test]
     fn blends_premultiplied_icon_pixels() {
@@ -245,5 +295,52 @@ mod tests {
             0,
         );
         assert_eq!(pixmap.data()[..4], [128, 0, 127, 255]);
+    }
+
+    #[test]
+    fn loads_icons_after_the_first_render() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("example.svg");
+        fs::write(
+            &path,
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><rect width="16" height="16" fill="#ff0000"/></svg>"##,
+        )
+        .unwrap();
+        let entry = Entry {
+            name: "Example".into(),
+            comment: String::new(),
+            keywords: String::new(),
+            icon: Some(path.to_string_lossy().into_owned()),
+            path: directory.path().join("example.desktop"),
+            exec: "example".into(),
+            terminal: false,
+            working_dir: None,
+        };
+        let config = Config::default();
+        let mut renderer = Renderer::new(&config).unwrap();
+        renderer
+            .render(
+                Size::new(config.width, config.height),
+                "",
+                &[&entry],
+                0,
+                None,
+            )
+            .unwrap();
+        assert!(renderer.icons.is_empty());
+        assert_eq!(renderer.pending_icons.len(), 1);
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !renderer.collect_icons() && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert!(
+            renderer
+                .icons
+                .get(entry.icon.as_ref().unwrap())
+                .unwrap()
+                .is_some()
+        );
+        assert!(renderer.pending_icons.is_empty());
     }
 }

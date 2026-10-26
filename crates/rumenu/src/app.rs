@@ -39,7 +39,7 @@ pub fn run(close: Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
         selected: 0,
         scroll: 0,
         error: None,
-        renderer: Renderer::new(&config),
+        renderer: Renderer::new(&config)?,
         config,
         surfaces: vec![surface],
         close,
@@ -196,7 +196,8 @@ impl Shell for App {
     }
 
     fn take_redraw_request(&mut self) -> bool {
-        std::mem::take(&mut self.redraw)
+        let icons_loaded = self.renderer.collect_icons();
+        std::mem::take(&mut self.redraw) || icons_loaded
     }
     fn should_close(&self) -> bool {
         self.close.load(Ordering::Acquire)
