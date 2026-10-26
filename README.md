@@ -2,6 +2,8 @@
 
 `rudesktop` is a Rust workspace for desktop tools and shared libraries. Its applications cover a status bar, application launcher, screenshot capture, and clipboard access.
 
+All software in this repository is currently in beta.
+
 | Package | Purpose |
 | --- | --- |
 | [`rubar`](crates/rubar/README.md) | Configurable status bar for Wayland and X11. |
