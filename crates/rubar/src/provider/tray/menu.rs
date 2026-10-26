@@ -50,6 +50,7 @@ pub(super) fn open(
         item.path.as_str(),
         ITEM_INTERFACE,
     )?;
+
     let menu_path = item_proxy
         .get_property::<OwnedObjectPath>("Menu")
         .ok()
@@ -65,6 +66,7 @@ pub(super) fn open(
         MENU_INTERFACE,
     )?;
     send_event(&menu_proxy, 0, "opened")?;
+
     let result = show_menu(
         &menu_proxy,
         button_left,
@@ -94,6 +96,7 @@ fn show_menu(
                 MenuEntry {
                     id: -1,
                     label: "‹ Back".to_string(),
+
                     enabled: true,
                     submenu: false,
                     separator: false,
@@ -110,6 +113,7 @@ fn show_menu(
         } else {
             Box::new(shell_surface::backend::x11::X11Backend) as Box<dyn Backend>
         };
+
         backend.run(&mut popup)?;
         let Some(index) = popup.selection else {
             return Ok(());
@@ -145,6 +149,7 @@ fn load_rows(proxy: &Proxy<'_>, parent: i32) -> Result<Vec<MenuEntry>, Box<dyn E
         }
         let id = i32::try_from(fields.remove(0))?;
         let properties = HashMap::<String, OwnedValue>::try_from(fields.remove(0))?;
+
         if !property_bool(&properties, "visible", true) {
             continue;
         }
@@ -158,6 +163,7 @@ fn load_rows(proxy: &Proxy<'_>, parent: i32) -> Result<Vec<MenuEntry>, Box<dyn E
             } else {
                 "○"
             }),
+
             Some("checkmark") => Some(if property_i32(&properties, "toggle-state") == Some(1) {
                 "☑"
             } else {
@@ -226,6 +232,7 @@ impl MenuPopup {
         let left = button_left.clamp(0, max_left);
         if std::env::var_os("WAYLAND_DISPLAY").is_some() {
             surface.anchors = Anchors::TOP | Anchors::RIGHT;
+
             surface.position = Position::new(max_left - left, style.height as i32);
         } else {
             surface.anchors = Anchors::TOP | Anchors::LEFT;
@@ -240,6 +247,7 @@ impl MenuPopup {
         }
         surface.keyboard_interactivity = KeyboardInteractivity::OnDemand;
         surface.override_redirect = true;
+
         Ok(Self {
             surfaces: vec![surface],
             rows,
@@ -276,6 +284,7 @@ impl MenuPopup {
         }
         buffer.set_text(text, &attrs, Shaping::Advanced, None);
         buffer.shape_until_scroll(&mut self.font_system, false);
+
         let y = row as i32 * ROW_HEIGHT as i32
             + ((ROW_HEIGHT as f32 - self.font_size * 1.3) / 2.0) as i32;
         buffer.draw(
@@ -291,6 +300,7 @@ impl MenuPopup {
                 let offset = (py as u32 * pixmap.width() + px as u32) as usize * 4;
                 let [r, g, b, coverage] = color.as_rgba();
                 let data = pixmap.data_mut();
+
                 let inverse = 255 - coverage as u16;
                 let blend = |src: u8, dst: u8| {
                     ((src as u16 * coverage as u16 + dst as u16 * inverse) / 255) as u8
@@ -325,6 +335,7 @@ impl Shell for MenuPopup {
             self.background[2],
             self.background[3],
         ));
+
         for index in 0..self.rows.len() {
             if self.hovered == Some(index)
                 && self.rows[index].enabled
@@ -343,6 +354,7 @@ impl Shell for MenuPopup {
                     pixmap.fill_rect(rect, &paint, tiny_skia::Transform::identity(), None);
                 }
             }
+
             if self.rows[index].separator {
                 let paint = tiny_skia::Paint {
                     shader: tiny_skia::Shader::SolidColor(Color::from_rgba8(
@@ -361,6 +373,7 @@ impl Shell for MenuPopup {
                 ) {
                     pixmap.fill_rect(rect, &paint, tiny_skia::Transform::identity(), None);
                 }
+
                 continue;
             }
             let mut label = self.rows[index].label.clone();
@@ -376,6 +389,7 @@ impl Shell for MenuPopup {
             }
             self.draw_label(&mut pixmap, &label, index, color);
         }
+
         let (pixels, _) = pixmap.data().as_chunks::<4>();
         Ok(pixels
             .iter()
@@ -403,6 +417,7 @@ impl Shell for MenuPopup {
                 {
                     self.selection = Some(index);
                 }
+
                 self.closed = self.selection.is_some();
             }
             InputEvent::PointerLeave => {
@@ -470,6 +485,7 @@ mod tests {
         } else {
             1200
         };
+
         assert_eq!(popup.surfaces[0].position.x, expected_x);
         assert_eq!(popup.surfaces[0].position.y, 30);
         assert_eq!(popup.surfaces[0].exclusive_zone, -1);
@@ -523,6 +539,7 @@ mod tests {
         let mut popup = MenuPopup::new(rows, 1200, 1920, None, &StyleConfig::default()).unwrap();
         popup.handle_event(SurfaceId(0), InputEvent::PointerLeave);
         assert!(!popup.should_close());
+
         popup.handle_event(
             SurfaceId(0),
             InputEvent::PointerEnter {

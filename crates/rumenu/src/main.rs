@@ -66,6 +66,7 @@ fn serve(socket: PathBuf) -> Result<(), Box<dyn Error>> {
     let _socket_guard = SocketGuard(socket);
     listener.set_nonblocking(true)?;
     let mut ui: Option<(Arc<AtomicBool>, thread::JoinHandle<()>)> = None;
+
     loop {
         if ui.as_ref().is_some_and(|(_, handle)| handle.is_finished())
             && let Some((_, handle)) = ui.take()
@@ -77,26 +78,31 @@ fn serve(socket: PathBuf) -> Result<(), Box<dyn Error>> {
                 stream.set_read_timeout(Some(Duration::from_secs(1)))?;
                 let mut request = [0; 7];
                 if stream.read_exact(&mut request).is_ok() && &request == b"toggle\n" {
-                    if let Some((close, handle)) = ui.take() {
-                        close.store(true, Ordering::Release);
-                        let _ = handle.join();
-                    } else {
-                        let close = Arc::new(AtomicBool::new(false));
-                        let signal = Arc::clone(&close);
-                        let handle = thread::spawn(move || {
-                            if let Err(error) = app::run(signal) {
-                                tracing::error!(%error, "launcher failed");
-                            }
-                        });
-                        ui = Some((close, handle));
-                    }
+                    toggle_ui(&mut ui);
                     stream.write_all(b"\n")?;
                 }
             }
+
             Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
             Err(error) => return Err(error.into()),
         }
         thread::sleep(Duration::from_millis(30));
+    }
+}
+
+fn toggle_ui(ui: &mut Option<(Arc<AtomicBool>, thread::JoinHandle<()>)>) {
+    if let Some((close, handle)) = ui.take() {
+        close.store(true, Ordering::Release);
+        let _ = handle.join();
+    } else {
+        let close = Arc::new(AtomicBool::new(false));
+        let signal = Arc::clone(&close);
+        let handle = thread::spawn(move || {
+            if let Err(error) = app::run(signal) {
+                tracing::error!(%error, "launcher failed");
+            }
+        });
+        *ui = Some((close, handle));
     }
 }
 

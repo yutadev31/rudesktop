@@ -27,6 +27,7 @@ struct HyprMonitor {
 struct HyprActiveWorkspace {
     id: i64,
 }
+
 #[derive(Debug, Deserialize)]
 struct HyprClient {
     address: String,
@@ -110,6 +111,7 @@ impl WmClient for HyprlandClient {
                         "could not switch to workspace {local_index} on monitor {monitor}: {error}"
                     )
                 })?;
+
                 if !split_response.starts_with("error") {
                     return Ok(());
                 }
@@ -185,45 +187,16 @@ fn event_loop(
             Ok(stream) => {
                 tracing::debug!(socket = %event_socket.display(), "connected to Hyprland event stream");
                 let reader = BufReader::new(stream);
+
                 for line in reader.lines() {
                     match line {
-                        Ok(event) if is_workspace_event(&event) => {
-                            tracing::trace!(event, "received Hyprland workspace event");
-                            update_state(&command_socket, &state, &urgent_windows)
-                        }
-                        Ok(event) if is_urgent_event(&event) => {
-                            tracing::trace!(event, "received Hyprland urgency event");
-                            if let Some((_, address)) = event.split_once(">>") {
-                                urgent_windows.insert(window_address(address).to_string());
-                                update_state(&command_socket, &state, &urgent_windows);
-                            }
-                        }
-                        Ok(event) if is_window_event(&event) => {
-                            tracing::trace!(event, "received Hyprland window event");
-                            if let Some((name, address)) = event.split_once(">>")
-                                && matches!(name, "activewindowv2" | "closewindow")
-                            {
-                                urgent_windows.remove(window_address(address));
-                            }
-                            if matches!(
-                                event.split_once(">>").map(|(name, _)| name),
-                                Some("openwindow" | "closewindow" | "activewindowv2")
-                            ) {
-                                update_state(&command_socket, &state, &urgent_windows);
-                            }
-                            match read_window_title(&command_socket) {
-                                Ok(value) => match title.write() {
-                                    Ok(mut target) => *target = value,
-                                    Err(error) => tracing::error!(
-                                        "rubar: could not update Hyprland window title: {error}"
-                                    ),
-                                },
-                                Err(error) => tracing::warn!(
-                                    "rubar: could not read Hyprland focused window: {error}"
-                                ),
-                            }
-                        }
-                        Ok(event) => tracing::trace!(event, "ignoring unrelated Hyprland event"),
+                        Ok(event) => handle_event(
+                            &event,
+                            &command_socket,
+                            &state,
+                            &title,
+                            &mut urgent_windows,
+                        ),
                         Err(error) => {
                             tracing::warn!("rubar: Hyprland event socket read failed: {error}");
                             break;
@@ -231,11 +204,59 @@ fn event_loop(
                     }
                 }
             }
+
             Err(error) => {
                 tracing::warn!("rubar: could not connect to Hyprland event socket: {error}");
             }
         }
         thread::sleep(reconnect_interval);
+    }
+}
+
+fn handle_event(
+    event: &str,
+    command_socket: &Path,
+    state: &Arc<RwLock<Option<WorkspaceState>>>,
+    title: &RwLock<Option<String>>,
+    urgent_windows: &mut HashSet<String>,
+) {
+    if is_workspace_event(event) {
+        tracing::trace!(event, "received Hyprland workspace event");
+        update_state(command_socket, state, urgent_windows);
+    } else if is_urgent_event(event) {
+        tracing::trace!(event, "received Hyprland urgency event");
+        if let Some((_, address)) = event.split_once(">>") {
+            urgent_windows.insert(window_address(address).to_string());
+
+            update_state(command_socket, state, urgent_windows);
+        }
+    } else if is_window_event(event) {
+        tracing::trace!(event, "received Hyprland window event");
+        if let Some((name, address)) = event.split_once(">>")
+            && matches!(name, "activewindowv2" | "closewindow")
+        {
+            urgent_windows.remove(window_address(address));
+        }
+        if matches!(
+            event.split_once(">>").map(|(name, _)| name),
+            Some("openwindow" | "closewindow" | "activewindowv2")
+        ) {
+            update_state(command_socket, state, urgent_windows);
+        }
+
+        match read_window_title(command_socket) {
+            Ok(value) => match title.write() {
+                Ok(mut target) => *target = value,
+                Err(error) => {
+                    tracing::error!("rubar: could not update Hyprland window title: {error}")
+                }
+            },
+            Err(error) => {
+                tracing::warn!("rubar: could not read Hyprland focused window: {error}")
+            }
+        }
+    } else {
+        tracing::trace!(event, "ignoring unrelated Hyprland event");
     }
 }
 
@@ -305,6 +326,7 @@ fn read_state(
     let monitors =
         request_json::<Vec<HyprMonitor>>(socket_dir, "j/monitors").unwrap_or_else(|error| {
             tracing::warn!("rubar: could not read Hyprland monitors: {error}");
+
             Vec::new()
         });
     let active_ids = monitors

@@ -47,6 +47,7 @@ fn read_sysfs(root: &Path) -> Result<BatteryState, String> {
             .ok_or_else(|| format!("could not read battery capacity from {}", path.display()))?;
         aggregate.percent_sum += u64::from(capacity);
         aggregate.batteries += 1;
+
         match read_value(&path, "status").as_deref() {
             Some("Charging") => aggregate.charging = true,
             Some("Discharging") => aggregate.discharging = true,
@@ -63,6 +64,7 @@ fn read_sysfs(root: &Path) -> Result<BatteryState, String> {
     if aggregate.batteries == 0 {
         return Err("no battery found in /sys/class/power_supply".to_string());
     }
+
     // Some wireless peripherals expose themselves as `Battery` devices but
     // only provide `capacity` (for example, Logitech HID++ devices). Prefer
     // the energy/charge based batteries when available so those peripherals
@@ -81,6 +83,7 @@ fn read_sysfs(root: &Path) -> Result<BatteryState, String> {
     } else {
         BatteryStatus::Unknown
     };
+
     Ok(BatteryState {
         percent: percent.min(100),
         status,
@@ -119,6 +122,7 @@ mod tests {
             fs::write(path.join("capacity"), capacity).unwrap();
             fs::write(path.join("status"), status).unwrap();
             fs::write(path.join("energy_now"), now).unwrap();
+
             fs::write(path.join("energy_full"), full).unwrap();
         }
         let peripheral = dir.path().join("hidpp_battery_0");

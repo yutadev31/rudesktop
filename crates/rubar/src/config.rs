@@ -302,6 +302,7 @@ impl Config {
         if !self.style.font_size.is_finite() || self.style.font_size <= 0.0 {
             return Err("style.font_size must be a finite positive number".to_string());
         }
+
         if self.tray.icon_size == 0 {
             return Err("tray.icon_size must be greater than zero".to_string());
         }
@@ -318,6 +319,7 @@ impl Config {
         if self.cpu.refresh_seconds == 0 {
             return Err("cpu.refresh_seconds must be greater than zero".to_string());
         }
+
         cpu::validate_name(&self.cpu.provider).map_err(|error| format!("cpu.provider: {error}"))?;
         if self.process.refresh_seconds == 0 {
             return Err("process.refresh_seconds must be greater than zero".to_string());
@@ -332,6 +334,7 @@ impl Config {
         {
             return Err("window.max_width must be between 1 and 2147483647".to_string());
         }
+
         for (name, value) in [
             ("style.bar_padding", self.style.bar_padding),
             ("style.item_padding", self.style.item_padding),
@@ -345,6 +348,7 @@ impl Config {
                 return Err(format!("{name} exceeds the supported range"));
             }
         }
+
         if !matches!(
             self.workspace.active_indicator_position.as_str(),
             "top" | "bottom"

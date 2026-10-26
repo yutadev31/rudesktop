@@ -126,6 +126,7 @@ impl WmClient for MangoClient {
         if monitor.contains([',', '\n', '\r']) {
             return Err(format!("invalid MangoWM monitor name {monitor:?}"));
         }
+
         let response = request(
             &self.socket,
             &format!("dispatch viewcrossmon,{tag},{monitor}"),
@@ -171,6 +172,7 @@ fn parse_monitors(value: Value) -> Result<WorkspaceState, String> {
                     tag.index, monitor.name
                 ));
             }
+
             let id = monitor_id * 32 + tag.index;
             if tag.is_active {
                 active_ids.entry(monitor.name.clone()).or_insert(id);
@@ -188,6 +190,7 @@ fn parse_monitors(value: Value) -> Result<WorkspaceState, String> {
             });
         }
     }
+
     workspaces.sort_by_key(|workspace| (workspace.monitor_id, workspace.id));
     Ok(WorkspaceState {
         workspaces,
@@ -314,6 +317,7 @@ mod tests {
                 writeln!(stream, "{response}").unwrap();
             }
         });
+
         let client = MangoClient {
             socket,
             state: Arc::new(RwLock::new(None)),

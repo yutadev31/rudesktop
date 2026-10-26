@@ -85,6 +85,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         } else {
             Some(0)
         };
+
         if let Some(monitor) = monitor {
             capturer.select_monitor(monitor)?;
         } else {
@@ -99,6 +100,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(region) = cli.region {
         capturer.set_region(region)?;
     }
+
     if cli.all {
         capturer.capture_all_outputs()?;
     } else {

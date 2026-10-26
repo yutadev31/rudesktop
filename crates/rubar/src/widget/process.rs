@@ -45,6 +45,7 @@ impl Widget for Process {
                 None
             }
         };
+
         self.last_refresh = Some(Instant::now());
         if self.count == count {
             return false;

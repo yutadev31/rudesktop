@@ -172,6 +172,7 @@ pub enum InputEvent {
         position: PositionF64,
         output: Option<String>,
     },
+
     PointerButton {
         position: PositionF64,
         button: MouseButton,
@@ -188,6 +189,7 @@ pub enum InputEvent {
         keycode: u32,
         pressed: bool,
     },
+
     /// A resolved key press. `text` is absent for navigation or modifier keys.
     KeyInput {
         key: Key,

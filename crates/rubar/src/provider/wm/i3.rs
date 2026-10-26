@@ -130,6 +130,7 @@ impl I3Client {
                 TITLE_RETRY_INTERVAL,
             )
         });
+
         let event_title = Arc::clone(&title);
         let event_wm_name = wm_name;
         thread::spawn(move || {
@@ -185,6 +186,7 @@ impl WmClient for I3Client {
             .cloned()
             .ok_or_else(|| format!("unknown {} workspace {workspace_id}", self.wm_name))?;
         let response = ipc_request(&self.socket, 0, format!("workspace {name}").as_bytes())?;
+
         let result = parse_ipc_command_response(&response).map_err(|error| {
             format!("could not parse {} command response: {error}", self.wm_name)
         })?;
@@ -280,6 +282,7 @@ fn workspace_snapshot(
             .find(|(index, workspace)| !used[*index] && workspace.name == *name)
         {
             used[index] = true;
+
             specs.push(WorkspaceSpec::from(workspace));
         } else {
             // A missing workspace is placed on the focused output so it can
@@ -317,6 +320,7 @@ fn workspace_snapshot(
             }
         })
         .collect::<Vec<_>>();
+
     let active_index = specs.iter().position(|spec| spec.focused);
     let active_id = active_index
         .map(|index| index as i64 + 1)
@@ -349,88 +353,80 @@ fn ipc_event_loop(
     event_state: EventState,
     reconnect_interval: Duration,
 ) {
-    let EventState {
-        workspaces: state,
-        workspace_names,
-        persistent_workspaces,
-        title,
-        title_requests,
-    } = event_state;
     loop {
         match subscribe_to_events(&socket) {
-            Ok(mut stream) => {
-                if let Err(error) = update_ipc_state(
-                    wm_name,
-                    &socket,
-                    &state,
-                    &workspace_names,
-                    &persistent_workspaces,
-                ) {
-                    tracing::warn!(
-                        "rubar: could not initialize {wm_name} workspace state: {error}"
-                    );
-                } else {
-                    tracing::debug!(window_manager = wm_name, "window manager IPC ready");
-                    request_title_update(wm_name, &title, &title_requests);
-                    // Reconcile state even if an event is missed or a snapshot fails.
-                    let mut next_refresh = Instant::now() + STATE_REFRESH_INTERVAL;
-                    loop {
-                        let now = Instant::now();
-                        if now >= next_refresh {
-                            let interval = refresh_ipc_state(
-                                wm_name,
-                                &socket,
-                                &state,
-                                &workspace_names,
-                                &persistent_workspaces,
-                            );
-                            next_refresh = Instant::now() + interval;
-                            continue;
-                        }
-                        match read_event_until(&mut stream, next_refresh - now) {
-                            Ok(Some((message_type, payload)))
-                                if message_type & 0x8000_0000 != 0 =>
-                            {
-                                let event_type = message_type & 0x7fff_ffff;
-                                tracing::trace!(
-                                    window_manager = wm_name,
-                                    event_type,
-                                    "received window manager event"
-                                );
-                                if event_type == 0 || event_type == 1 {
-                                    let interval = refresh_ipc_state(
-                                        wm_name,
-                                        &socket,
-                                        &state,
-                                        &workspace_names,
-                                        &persistent_workspaces,
-                                    );
-                                    next_refresh = Instant::now() + interval;
-                                }
-                                handle_title_event(
-                                    wm_name,
-                                    event_type,
-                                    &payload,
-                                    &title,
-                                    &title_requests,
-                                );
-                            }
-                            Ok(_) => {}
-                            Err(error) => {
-                                tracing::warn!(
-                                    "rubar: {wm_name} event socket read failed: {error}"
-                                );
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
+            Ok(mut stream) => watch_events(wm_name, &socket, &mut stream, &event_state),
             Err(error) => {
                 tracing::warn!("rubar: could not subscribe to {wm_name} events: {error}")
             }
         }
         thread::sleep(reconnect_interval);
+    }
+}
+
+fn watch_events(wm_name: &str, socket: &Path, stream: &mut UnixStream, event_state: &EventState) {
+    if let Err(error) = update_ipc_state(
+        wm_name,
+        socket,
+        &event_state.workspaces,
+        &event_state.workspace_names,
+        &event_state.persistent_workspaces,
+    ) {
+        tracing::warn!("rubar: could not initialize {wm_name} workspace state: {error}");
+        return;
+    }
+
+    tracing::debug!(window_manager = wm_name, "window manager IPC ready");
+    request_title_update(wm_name, &event_state.title, &event_state.title_requests);
+    // Reconcile state even if an event is missed or a snapshot fails.
+    let mut next_refresh = Instant::now() + STATE_REFRESH_INTERVAL;
+    loop {
+        let now = Instant::now();
+        if now >= next_refresh {
+            let interval = refresh_ipc_state(
+                wm_name,
+                socket,
+                &event_state.workspaces,
+                &event_state.workspace_names,
+                &event_state.persistent_workspaces,
+            );
+            next_refresh = Instant::now() + interval;
+
+            continue;
+        }
+        match read_event_until(stream, next_refresh - now) {
+            Ok(Some((message_type, payload))) if message_type & 0x8000_0000 != 0 => {
+                let event_type = message_type & 0x7fff_ffff;
+                tracing::trace!(
+                    window_manager = wm_name,
+                    event_type,
+                    "received window manager event"
+                );
+                if event_type == 0 || event_type == 1 {
+                    let interval = refresh_ipc_state(
+                        wm_name,
+                        socket,
+                        &event_state.workspaces,
+                        &event_state.workspace_names,
+                        &event_state.persistent_workspaces,
+                    );
+
+                    next_refresh = Instant::now() + interval;
+                }
+                handle_title_event(
+                    wm_name,
+                    event_type,
+                    &payload,
+                    &event_state.title,
+                    &event_state.title_requests,
+                );
+            }
+            Ok(_) => {}
+            Err(error) => {
+                tracing::warn!("rubar: {wm_name} event socket read failed: {error}");
+                break;
+            }
+        }
     }
 }
 
@@ -449,6 +445,7 @@ fn handle_title_event(
             Ok(_) => {}
             Err(error) => {
                 tracing::warn!("rubar: could not parse {wm_name} workspace event: {error}");
+
                 request_title_update(wm_name, title, requests);
             }
         },
@@ -464,6 +461,7 @@ fn handle_title_event(
             },
             Err(error) => {
                 tracing::warn!("rubar: could not parse {wm_name} window event: {error}");
+
                 request_title_update(wm_name, title, requests);
             }
         },
@@ -512,6 +510,7 @@ fn title_loop(
                 Err(TryRecvError::Empty) => match title.read() {
                     Ok(current) if current.generation != failed => continue,
                     Ok(_) => {}
+
                     Err(error) => {
                         tracing::error!(
                             "rubar: could not read {wm_name} window title state: {error}"
@@ -526,6 +525,7 @@ fn title_loop(
         }
         // One lookup observes the latest title for all pending events.
         while requests.try_recv().is_ok() {}
+
         let generation = match title.read() {
             Ok(current) => current.generation,
             Err(error) => {
@@ -541,6 +541,7 @@ fn title_loop(
                     tracing::error!("rubar: could not update {wm_name} window title: {error}")
                 }
             },
+
             Err(error) => {
                 tracing::warn!("rubar: could not read {wm_name} focused window: {error}");
                 failed_generation = Some(generation);
@@ -566,6 +567,7 @@ fn refresh_ipc_state(
         Ok(()) => STATE_REFRESH_INTERVAL,
         Err(error) => {
             tracing::warn!("rubar: could not refresh {wm_name} workspace state: {error}");
+
             FAILED_REFRESH_INTERVAL
         }
     }
@@ -622,6 +624,7 @@ fn ipc_request_with_timeout(
             socket.display()
         )
     })?;
+
     stream.set_write_timeout(Some(timeout)).map_err(|error| {
         format!(
             "could not set write timeout for {}: {error}",
@@ -690,6 +693,7 @@ fn focused_window_title(node: &serde_json::Value) -> Option<String> {
             .and_then(serde_json::Value::as_str)
             .map(str::to_owned);
     }
+
     node.get("nodes")
         .and_then(serde_json::Value::as_array)
         .into_iter()
@@ -867,6 +871,7 @@ mod tests {
             &title,
             &requests,
         );
+
         handle_title_event("i3", 0, br#"{"change":"rename"}"#, &title, &requests);
         assert_eq!(title.read().unwrap().value.as_deref(), Some("Terminal"));
         assert!(pending.try_recv().is_err());
@@ -932,6 +937,7 @@ mod tests {
                 }
             };
             assert_eq!(ipc_read_message(&mut second).unwrap().0, 4);
+
             ipc_write_message(
                 &mut second,
                 4,

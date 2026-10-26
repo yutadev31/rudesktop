@@ -191,6 +191,7 @@ impl PulseAudio {
                     DeviceKind::Source => info.default_source_name.as_ref(),
                 }
                 .map(ToString::to_string);
+
                 unsafe { (*mainloop_ref.as_ptr()).signal(false) };
             });
         complete_operation(
@@ -217,6 +218,7 @@ impl PulseAudio {
                         unsafe { (*mainloop_ref.as_ptr()).signal(false) };
                     },
                 );
+
                 complete_operation(
                     &self.mainloop,
                     &operation,
@@ -231,6 +233,7 @@ impl PulseAudio {
                         if let ListResult::Item(info) = result {
                             *device_ref.borrow_mut() = Some(DeviceInfo::Source(info.to_owned()));
                         }
+
                         unsafe { (*mainloop_ref.as_ptr()).signal(false) };
                     },
                 );
@@ -271,6 +274,7 @@ impl VolumeProvider for PulseAudio {
                 percent,
                 muted: sink.mute,
             }),
+
             input,
         };
         *self.state.lock().unwrap() = Some(state);
@@ -291,6 +295,7 @@ impl VolumeProvider for PulseAudio {
                 unsafe { (*mainloop_ref.as_ptr()).signal(false) };
             })),
         );
+
         complete_operation(
             &self.mainloop,
             &operation,
@@ -473,6 +478,7 @@ fn refresh_async(
                             output,
                             input: Some(VolumeChannelState {
                                 percent: volume_percent(info.volume.avg().0),
+
                                 muted: info.mute,
                             }),
                         });

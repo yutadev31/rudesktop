@@ -34,6 +34,7 @@ fn parse_meminfo(contents: &str) -> Result<MemoryState, String> {
             _ => continue,
         };
         let mut parts = value.split_whitespace();
+
         let number = parts
             .next()
             .ok_or_else(|| format!("{key} has no value"))?

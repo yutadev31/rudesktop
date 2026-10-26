@@ -103,6 +103,7 @@ impl WaylandBackend {
         if output_count == 0 {
             return Err(crate::Error::NoMonitors);
         }
+
         if let Some(index) = monitor_index
             && index >= output_count
         {
@@ -259,6 +260,7 @@ impl Dispatch<wl_output::WlOutput, u32> for State {
             }
             wl_output::Event::Geometry { x, y, .. } => {
                 state.output_layouts.entry(*global_name).or_default().x = x;
+
                 state.output_layouts.entry(*global_name).or_default().y = y;
             }
             _ => {}
@@ -290,6 +292,7 @@ impl Dispatch<zwlr_screencopy_frame_v1::ZwlrScreencopyFrameV1, ()> for State {
         match event {
             zwlr_screencopy_frame_v1::Event::Buffer {
                 format: WEnum::Value(format),
+
                 width,
                 height,
                 stride,

@@ -55,6 +55,7 @@ impl Config {
         {
             return Err("invalid rumenu size, result count, or font size".into());
         }
+
         for color in [
             &self.background,
             &self.foreground,

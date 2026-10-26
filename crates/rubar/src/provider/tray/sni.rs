@@ -104,6 +104,7 @@ impl TrayProvider for Sni {
         } else {
             "Activate"
         };
+
         thread::spawn(move || {
             let result = (|| {
                 let connection = Connection::session()?;
@@ -134,6 +135,7 @@ impl TrayProvider for Sni {
         thread::spawn(move || {
             let _guard = MenuOpenGuard(menu_open);
             let identity = format!("{}{}", item.service, item.path);
+
             if let Err(error) = menu::open(
                 item,
                 position.button_left,
@@ -166,19 +168,19 @@ impl Watcher {
         #[zbus(header)] header: Header<'_>,
         #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
     ) {
-        let (service, path) = if service_or_path.starts_with('/') {
-            (
-                header
-                    .sender()
-                    .map_or_else(|| service_or_path.to_string(), |s| s.to_string()),
-                service_or_path.to_string(),
-            )
+        let path = if service_or_path.starts_with('/') {
+            service_or_path.to_string()
         } else {
-            (
-                service_or_path.to_string(),
-                "/StatusNotifierItem".to_string(),
-            )
+            "/StatusNotifierItem".to_string()
         };
+        let service = if service_or_path.starts_with('/') {
+            header
+                .sender()
+                .map_or_else(|| service_or_path.to_string(), |s| s.to_string())
+        } else {
+            service_or_path.to_string()
+        };
+
         let item = SniItem {
             service: service.clone(),
             path: path.clone(),
@@ -186,6 +188,7 @@ impl Watcher {
             attention_icon: None,
             needs_attention: false,
         };
+
         self.items
             .lock()
             .expect("SNI item lock poisoned")
@@ -224,6 +227,7 @@ impl Watcher {
             .map(|item| format!("{}{}", item.service, item.path))
             .collect()
     }
+
     #[zbus(property)]
     fn registered_status_notifier_hosts(&self) -> Vec<String> {
         vec!["rubar".to_string()]
@@ -254,6 +258,7 @@ fn run_dbus(items: Items, sender: mpsc::Sender<Vec<TrayItem>>) {
     else {
         return;
     };
+
     let watcher_ref = match connection
         .object_server()
         .interface::<_, Watcher>(WATCHER_PATH)
@@ -273,6 +278,7 @@ fn run_dbus(items: Items, sender: mpsc::Sender<Vec<TrayItem>>) {
         Ok(bus) => bus,
         Err(error) => {
             tracing::error!("rubar: could not connect to session bus daemon: {error}");
+
             return;
         }
     };
@@ -289,6 +295,7 @@ fn run_dbus(items: Items, sender: mpsc::Sender<Vec<TrayItem>>) {
                 Ok(change) => change,
                 Err(error) => {
                     tracing::warn!("rubar: could not decode D-Bus name change: {error}");
+
                     continue;
                 }
             };
@@ -343,6 +350,7 @@ fn watch_item_signal(
             return;
         }
     };
+
     let proxy = match item_proxy(&connection, &service, &path) {
         Ok(proxy) => proxy,
         Err(error) => {
@@ -394,6 +402,7 @@ fn update_icon(
                 .unwrap_or_default();
             choose_icon(&pixmaps, 16)
         });
+
     let attention_icon = proxy
         .get_property::<String>("AttentionIconName")
         .ok()
@@ -407,6 +416,7 @@ fn update_icon(
     let needs_attention = proxy
         .get_property::<String>("Status")
         .is_ok_and(|status| status == "NeedsAttention");
+
     if let Some(item) = items
         .lock()
         .expect("SNI item lock poisoned")
@@ -445,6 +455,7 @@ fn choose_icon(pixmaps: &[(i32, i32, Vec<u8>)], target: i32) -> Option<TrayIcon>
     let mut pixels = Vec::with_capacity(bytes.len());
     for argb in bytes.as_chunks::<4>().0 {
         let alpha = argb[0] as u16;
+
         pixels.extend_from_slice(&[
             ((argb[1] as u16 * alpha) / 255) as u8,
             ((argb[2] as u16 * alpha) / 255) as u8,

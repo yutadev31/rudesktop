@@ -97,6 +97,7 @@ impl Backend for X11Backend {
                 AtomEnum::ATOM,
                 &[window_type],
             )?;
+
             if matches!(config.layer, Layer::Top | Layer::Overlay) {
                 connection.change_property32(
                     PropMode::REPLACE,
@@ -112,6 +113,7 @@ impl Backend for X11Backend {
                 connection.set_input_focus(InputFocus::POINTER_ROOT, window, CURRENT_TIME)?;
             }
             let gc = connection.generate_id()?;
+
             connection.create_gc(gc, window, &CreateGCAux::new())?;
             windows.push(WindowState {
                 surface: SurfaceId(index),
@@ -151,6 +153,7 @@ impl Backend for X11Backend {
                     state.redraw(index)?;
                 }
             }
+
             // A modest timer keeps animated or time-based surfaces current
             // without making the backend depend on a widget implementation.
             thread::sleep(Duration::from_millis(50));
@@ -187,6 +190,7 @@ impl State<'_> {
             )
             .into());
         }
+
         self.connection.put_image(
             ImageFormat::Z_PIXMAP,
             window.window,
@@ -224,6 +228,7 @@ impl State<'_> {
                     );
                     self.windows[index].size = size;
                     let surface = self.windows[index].surface;
+
                     self.shell
                         .handle_event(surface, InputEvent::Resized { size });
                     self.redraw(index)?;
@@ -241,6 +246,7 @@ impl State<'_> {
                     },
                 );
             }
+
             Event::LeaveNotify(event) => {
                 self.pointer_event(event.event, InputEvent::PointerLeave);
             }
@@ -256,6 +262,7 @@ impl State<'_> {
                     },
                 );
             }
+
             Event::ButtonPress(event) => {
                 if let Some(index) = self.window_index(event.event) {
                     let position =
@@ -273,6 +280,7 @@ impl State<'_> {
                             delta_y: 1.0,
                             output: None,
                         }),
+
                         6 => Some(InputEvent::PointerScroll {
                             position,
                             delta_x: 1.0,
@@ -288,6 +296,7 @@ impl State<'_> {
                         button => Some(InputEvent::PointerButton {
                             position,
                             button: mouse_button(button),
+
                             pressed: true,
                             output: None,
                         }),
@@ -297,6 +306,7 @@ impl State<'_> {
                     self.redraw(index)?;
                 }
             }
+
             Event::ButtonRelease(event) if event.detail <= 3 => {
                 self.pointer_event_with_position(
                     event.event,
@@ -316,6 +326,7 @@ impl State<'_> {
             Event::KeyRelease(event) => {
                 self.key_event(event.event, event.detail, event.state, false)
             }
+
             Event::FocusOut(event) => {
                 if let Some(index) = self.window_index(event.event) {
                     self.shell
@@ -329,6 +340,7 @@ impl State<'_> {
                     .get_keyboard_mapping(self.min_keycode, max_keycode - self.min_keycode + 1)?
                     .reply()?;
             }
+
             Event::ClientMessage(ClientMessageEvent { window, data, .. })
                 if data.as_data32()[0] == self.atoms.wm_delete_window =>
             {
@@ -371,6 +383,7 @@ impl State<'_> {
                 let offset = usize::from(keycode.saturating_sub(self.min_keycode))
                     * usize::from(self.keyboard_mapping.keysyms_per_keycode);
                 let per_keycode = usize::from(self.keyboard_mapping.keysyms_per_keycode);
+
                 let alphabetic = self
                     .keyboard_mapping
                     .keysyms
@@ -384,6 +397,7 @@ impl State<'_> {
                 let altgr = modifiers.contains(KeyButMask::MOD5) && per_keycode >= 4;
                 let column = (usize::from(altgr) * 2 + usize::from(shifted))
                     .min(per_keycode.saturating_sub(1));
+
                 let symbol = self
                     .keyboard_mapping
                     .keysyms
@@ -398,6 +412,7 @@ impl State<'_> {
                     0xff54 => Key::Down,
                     _ => Key::Other,
                 };
+
                 let text = if modifiers.intersects(KeyButMask::CONTROL | KeyButMask::MOD1) {
                     None
                 } else {
@@ -411,6 +426,7 @@ impl State<'_> {
                         .filter(|c| !c.is_control())
                         .map(|c| c.to_string())
                 };
+
                 self.shell.handle_event(
                     self.windows[index].surface,
                     InputEvent::KeyInput { key, text },
@@ -442,6 +458,7 @@ fn set_strut(
     }
     let width = u32::from(screen.width_in_pixels);
     let height = u32::from(screen.height_in_pixels);
+
     let top = if config.anchors.contains(super::Anchors::TOP) {
         zone
     } else {
@@ -457,6 +474,7 @@ fn set_strut(
     } else {
         0
     };
+
     let right = if config.anchors.contains(super::Anchors::RIGHT) {
         zone
     } else {
@@ -469,25 +487,28 @@ fn set_strut(
         AtomEnum::CARDINAL,
         &[left, right, top, bottom],
     )?;
+
+    let partial_strut = [
+        left,
+        right,
+        top,
+        bottom,
+        0,
+        height.saturating_sub(1),
+        0,
+        height.saturating_sub(1),
+        0,
+        width.saturating_sub(1),
+        0,
+        width.saturating_sub(1),
+    ];
+
     connection.change_property32(
         PropMode::REPLACE,
         window,
         atoms.net_wm_strut_partial,
         AtomEnum::CARDINAL,
-        &[
-            left,
-            right,
-            top,
-            bottom,
-            0,
-            height.saturating_sub(1),
-            0,
-            height.saturating_sub(1),
-            0,
-            width.saturating_sub(1),
-            0,
-            width.saturating_sub(1),
-        ],
+        &partial_strut,
     )?;
     Ok(())
 }

@@ -115,6 +115,7 @@ mod tests {
             PositionedFrame {
                 frame: Frame {
                     data: [5, 6, 7, 8].repeat(2),
+
                     width: 1,
                     height: 2,
                 },

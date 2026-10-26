@@ -66,6 +66,7 @@ impl Loader {
             .strip_suffix(".png")
             .or_else(|| name.strip_suffix(".svg"))
             .unwrap_or(name);
+
         let mut visited = HashSet::new();
         for theme in &self.themes {
             if let Some(icon) = self.load_from_theme(theme, name, target, raster_size, &mut visited)
@@ -84,6 +85,7 @@ impl Loader {
                 }
             }
         }
+
         for base in data_dirs() {
             for file in candidate_files(&base.join("pixmaps"), name) {
                 if let Some(icon) = load_file(&file, target, raster_size) {
@@ -109,6 +111,7 @@ impl Loader {
         for root in &self.roots {
             let theme_dir = root.join(theme);
             let (mut directories, inherits) = theme_index(&theme_dir);
+
             parents.extend(inherits);
             if directories.is_empty() {
                 directories = conventional_directories(target);
@@ -122,6 +125,7 @@ impl Loader {
                 }
             }
         }
+
         for parent in parents {
             if let Some(icon) = self.load_from_theme(&parent, name, target, raster_size, visited) {
                 return Some(icon);
@@ -160,29 +164,26 @@ fn theme_index(theme_dir: &Path) -> (Vec<String>, Vec<String>) {
     let mut parents = Vec::new();
     for line in contents.lines() {
         let line = line.trim();
+
         if line.starts_with('[') {
             in_theme = line == "[Icon Theme]";
         } else if in_theme {
             if let Some(value) = line.strip_prefix("Directories=") {
-                directories.extend(
-                    value
-                        .split(',')
-                        .map(str::trim)
-                        .filter(|v| !v.is_empty())
-                        .map(str::to_string),
-                );
+                directories.extend(parse_theme_list(value));
             } else if let Some(value) = line.strip_prefix("Inherits=") {
-                parents.extend(
-                    value
-                        .split(',')
-                        .map(str::trim)
-                        .filter(|v| !v.is_empty())
-                        .map(str::to_string),
-                );
+                parents.extend(parse_theme_list(value));
             }
         }
     }
     (directories, parents)
+}
+
+fn parse_theme_list(value: &str) -> impl Iterator<Item = String> + '_ {
+    value
+        .split(',')
+        .map(str::trim)
+        .filter(|entry| !entry.is_empty())
+        .map(str::to_string)
 }
 
 fn conventional_directories(target: u32) -> Vec<String> {
@@ -233,6 +234,7 @@ pub fn load_file(path: &Path, target: u32, raster_size: RasterSize) -> Option<Ic
             let mut pixmap = Pixmap::new(target, target)?;
             let size = tree.size();
             let scale = (target as f32 / size.width()).min(target as f32 / size.height());
+
             resvg::render(
                 &tree,
                 Transform::from_scale(scale, scale),
@@ -252,6 +254,7 @@ pub fn load_file(path: &Path, target: u32, raster_size: RasterSize) -> Option<Ic
                     image::imageops::resize(&image, target, target, FilterType::Lanczos3)
                 }
             };
+
             let (width, height) = image.dimensions();
             let mut pixels = image.into_raw();
             for pixel in pixels.as_chunks_mut::<4>().0 {
@@ -289,6 +292,7 @@ mod tests {
         )
         .unwrap();
         let image = image::RgbaImage::from_pixel(1, 1, image::Rgba([200, 100, 40, 128]));
+
         image.save(parent.join("32x32/apps/example.png")).unwrap();
         let loader = Loader::with_roots(vec![root.to_path_buf()], ["child"]);
         let icon = loader.load("example", 32, RasterSize::Original).unwrap();

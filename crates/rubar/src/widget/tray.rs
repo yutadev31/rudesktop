@@ -55,6 +55,7 @@ impl Widget for Tray {
                         text: None,
                         icon,
                         padding: Some(0),
+
                         max_width: None,
                         bold: None,
                         color: None,
@@ -96,6 +97,7 @@ impl Widget for Tray {
         );
     }
 }
+
 fn resize_icon(icon: TrayIcon, size: u32) -> TrayIcon {
     if icon.width == 0 || icon.height == 0 || size == 0 {
         return icon;
@@ -106,6 +108,7 @@ fn resize_icon(icon: TrayIcon, size: u32) -> TrayIcon {
     let mut pixels = vec![0; size as usize * size as usize * 4];
     let left = (size - width) / 2;
     let top = (size - height) / 2;
+
     for y in 0..height {
         for x in 0..width {
             let source_x = (x as u64 * icon.width as u64 / width as u64) as usize;

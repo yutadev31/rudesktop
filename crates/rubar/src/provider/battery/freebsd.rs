@@ -58,6 +58,7 @@ mod tests {
             BatteryStatus::Charging
         );
         assert_eq!(battery_state(100, 0).unwrap().status, BatteryStatus::Full);
+
         assert_eq!(battery_state(42, 0).unwrap().status, BatteryStatus::Unknown);
         assert!(battery_state(101, 0).is_err());
         assert_eq!(

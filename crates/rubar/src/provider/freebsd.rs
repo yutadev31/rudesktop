@@ -41,6 +41,7 @@ fn read_sysctl<T: Copy>(name: &CStr) -> Result<T, String> {
             0,
         )
     };
+
     if result != 0 {
         return Err(format!(
             "could not read {}: {}",

@@ -32,6 +32,7 @@ pub fn run(close: Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
         surface.position.y = (i32::from(screen.height_in_pixels) - config.height as i32) / 2;
         surface.override_redirect = true;
     }
+
     let mut app = App {
         entries: catalog::scan(!config.terminal.is_empty()),
         filtered: Vec::new(),
@@ -46,6 +47,7 @@ pub fn run(close: Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
         redraw: true,
     };
     app.refilter();
+
     let mut backend: Box<dyn Backend> = if wayland {
         Box::new(shell_surface::backend::wayland::WaylandBackend)
     } else {
@@ -118,6 +120,7 @@ impl App {
                 self.selected.saturating_sub(1)
             };
         }
+
         if self.selected < self.scroll {
             self.scroll = self.selected;
         }
@@ -146,6 +149,7 @@ impl Shell for App {
             .take(self.visible_rows())
             .map(|index| &self.entries[*index])
             .collect::<Vec<_>>();
+
         self.renderer.render(
             size,
             &self.query,
@@ -171,6 +175,7 @@ impl Shell for App {
                 ..
             } => {
                 self.query.pop();
+
                 self.error = None;
                 self.refilter();
             }
@@ -183,6 +188,7 @@ impl Shell for App {
                 self.error = None;
                 self.refilter();
             }
+
             InputEvent::PointerButton {
                 position,
                 button: MouseButton::Left,

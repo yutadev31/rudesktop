@@ -64,6 +64,7 @@ fn visit(
             return;
         }
     };
+
     for item in read_dir {
         let item = match item {
             Ok(item) => item,
@@ -80,6 +81,7 @@ fn visit(
                 continue;
             }
         };
+
         if file_type.is_dir() {
             visit(root, &path, seen, entries, terminal_available);
         } else if (file_type.is_file() || file_type.is_symlink())
@@ -95,6 +97,7 @@ fn visit(
             match parse(&path, terminal_available) {
                 Ok(Some(entry)) => entries.push(entry),
                 Ok(None) => {}
+
                 Err(error) => {
                     tracing::warn!(path = %path.display(), %error, "invalid desktop entry")
                 }
@@ -118,6 +121,7 @@ fn parse(path: &Path, terminal_available: bool) -> Result<Option<Entry>, Box<dyn
             fields.insert(key.trim().to_string(), value.trim().to_string());
         }
     }
+
     if fields.get("Type").map(String::as_str) != Some("Application")
         || matches!(fields.get("Hidden").map(String::as_str), Some("true"))
         || matches!(fields.get("NoDisplay").map(String::as_str), Some("true"))
@@ -135,6 +139,7 @@ fn parse(path: &Path, terminal_available: bool) -> Result<Option<Entry>, Box<dyn
     {
         return Ok(None);
     }
+
     if fields
         .get("TryExec")
         .is_some_and(|exe| !executable_exists(exe))
@@ -151,6 +156,7 @@ fn parse(path: &Path, terminal_available: bool) -> Result<Option<Entry>, Box<dyn
     let Some(exec) = fields.get("Exec") else {
         return Ok(None);
     };
+
     Ok(Some(Entry {
         name,
         comment: localized(&fields, "Comment").unwrap_or_default(),
@@ -204,6 +210,7 @@ fn unescape(value: &str) -> String {
             result.push(ch);
         }
     }
+
     result
 }
 
@@ -241,6 +248,7 @@ pub fn launch(entry: &Entry, terminal: &[String]) -> Result<(), Box<dyn Error>> 
     } else {
         Command::new(program)
     };
+
     command
         .args(arguments)
         .stdin(Stdio::null())
@@ -273,6 +281,7 @@ fn expand_exec(entry: &Entry) -> Result<Vec<String>, Box<dyn Error>> {
         while let Some(ch) = chars.next() {
             if ch != '%' {
                 result.push(ch);
+
                 continue;
             }
             match chars.next().ok_or("trailing % in Exec")? {
@@ -298,6 +307,7 @@ fn tokenize(value: &str) -> Result<Vec<String>, Box<dyn Error>> {
     for ch in value.chars() {
         if escaped {
             token.push(ch);
+
             escaped = false;
         } else if ch == '\\' {
             escaped = true;
@@ -314,6 +324,7 @@ fn tokenize(value: &str) -> Result<Vec<String>, Box<dyn Error>> {
     if quoted || escaped {
         return Err("unterminated Exec quotation".into());
     }
+
     if !token.is_empty() {
         args.push(token);
     }
@@ -347,6 +358,7 @@ mod tests {
             terminal: false,
             working_dir: None,
         };
+
         assert_eq!(
             expand_exec(&entry).unwrap(),
             [

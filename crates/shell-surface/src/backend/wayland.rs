@@ -62,6 +62,7 @@ impl Backend for WaylandBackend {
             )
         });
         let registry = globals.registry().clone();
+
         let outputs = if needs_output_binding {
             globals.contents().with_list(|list| {
                 list.iter()
@@ -106,6 +107,7 @@ impl Backend for WaylandBackend {
                             config,
                             &qh,
                         );
+
                         surface.monitor_name = state
                             .output_names
                             .iter()
@@ -124,6 +126,7 @@ impl Backend for WaylandBackend {
                         &qh,
                     ));
                 }
+
                 OutputSelection::Named(name) => {
                     let output = state
                         .output_names
@@ -139,6 +142,7 @@ impl Backend for WaylandBackend {
                         config,
                         &qh,
                     );
+
                     surface.monitor_name = Some(name.clone());
                     state.surfaces.push(surface);
                 }
@@ -163,6 +167,7 @@ impl Backend for WaylandBackend {
                     .map(|repeat| repeat.next.saturating_duration_since(Instant::now()))
                     .map(|remaining| remaining.as_millis().clamp(1, 50) as i32)
                     .unwrap_or(50);
+
                 let ready = unsafe { libc::poll(&mut fd, 1, timeout) };
                 if ready > 0 {
                     guard.read()?;
@@ -178,6 +183,7 @@ impl Backend for WaylandBackend {
                 state.mark_all_for_redraw();
             }
             let pointer_events = std::mem::take(&mut state.pending_events);
+
             if !pointer_events.is_empty() {
                 state.mark_all_for_redraw();
             }
@@ -210,6 +216,7 @@ fn create_surface(
         qh,
         (),
     );
+
     let anchors = anchors(config.anchors);
     if !config.anchors.is_empty() {
         layer_surface.set_anchor(anchors);
@@ -224,6 +231,7 @@ fn create_surface(
             } else {
                 0
             };
+
         let right =
             if config.anchors.contains(Anchors::RIGHT) && !config.anchors.contains(Anchors::LEFT) {
                 config.position.x
@@ -323,6 +331,7 @@ impl SurfaceState {
             config.size.width.max(WIDTH_FALLBACK),
             config.size.height.max(HEIGHT_FALLBACK),
         );
+
         Self {
             logical_surface,
             output,
@@ -352,6 +361,7 @@ impl State {
             shm,
             _outputs: outputs,
             output_names: Vec::new(),
+
             surfaces,
             _seat: seat,
             _pointer: pointer,
@@ -392,6 +402,7 @@ impl State {
                     xkb::keysyms::KEY_Down => Key::Down,
                     _ => Key::Other,
                 },
+
                 text: (!text.is_empty() && !text.chars().any(char::is_control)).then_some(text),
             },
         });
@@ -475,6 +486,7 @@ impl State {
             qh,
             (),
         );
+
         pool.destroy();
         let surface = &mut self.surfaces[index];
         surface.surface.attach(Some(&buffer), 0, 0);
@@ -510,6 +522,36 @@ struct PendingEvent {
     event: InputEvent,
 }
 
+fn handle_layer_configure(
+    state: &mut State,
+    proxy: &zwlr_layer_surface_v1::ZwlrLayerSurfaceV1,
+    serial: u32,
+    width: u32,
+    height: u32,
+) {
+    let Some(surface) = state
+        .surfaces
+        .iter_mut()
+        .find(|surface| &surface.layer_surface == proxy)
+    else {
+        return;
+    };
+
+    surface.layer_surface.ack_configure(serial);
+    if width > 0 {
+        surface.size.width = width;
+    }
+    if height > 0 {
+        surface.size.height = height;
+    }
+    surface.needs_redraw = true;
+
+    state.pending_events.push(PendingEvent {
+        surface: surface.logical_surface,
+        event: InputEvent::Resized { size: surface.size },
+    });
+}
+
 impl Dispatch<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, ()> for State {
     fn event(
         state: &mut Self,
@@ -524,27 +566,8 @@ impl Dispatch<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, ()> for State {
                 serial,
                 width,
                 height,
-            } => {
-                if let Some(index) = state
-                    .surfaces
-                    .iter()
-                    .position(|surface| &surface.layer_surface == proxy)
-                {
-                    let surface = &mut state.surfaces[index];
-                    surface.layer_surface.ack_configure(serial);
-                    if width > 0 {
-                        surface.size.width = width;
-                    }
-                    if height > 0 {
-                        surface.size.height = height;
-                    }
-                    surface.needs_redraw = true;
-                    state.pending_events.push(PendingEvent {
-                        surface: surface.logical_surface,
-                        event: InputEvent::Resized { size: surface.size },
-                    });
-                }
-            }
+            } => handle_layer_configure(state, proxy, serial, width, height),
+
             zwlr_layer_surface_v1::Event::Closed => {
                 if let Some(surface) = state
                     .surfaces
@@ -591,6 +614,7 @@ impl Dispatch<wl_callback::WlCallback, ()> for State {
                 .find(|surface| surface.frame_callback.as_ref() == Some(proxy))
         {
             surface.frame_callback = None;
+
             if surface.last_draw.elapsed() < REDRAW_INTERVAL && !surface.needs_redraw {
                 surface.frame_callback = Some(surface.surface.frame(qh, ()));
                 surface.surface.damage_buffer(0, 0, 1, 1);
@@ -619,6 +643,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for State {
                 ..
             } => {
                 state.pointer_surface = state.surface_index(&surface);
+
                 state.pointer_position = PositionF64::new(surface_x, surface_y);
                 if let Some(index) = state.pointer_surface {
                     state.pending_events.push(PendingEvent {
@@ -637,6 +662,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for State {
                         event: InputEvent::PointerLeave,
                     });
                 }
+
                 state.pointer_surface = None;
             }
             wl_pointer::Event::Motion {
@@ -655,6 +681,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for State {
                     });
                 }
             }
+
             wl_pointer::Event::Button {
                 button,
                 state: button_state,
@@ -668,6 +695,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for State {
                             button: mouse_button(button),
                             pressed: button_state.into_result().ok()
                                 == Some(wl_pointer::ButtonState::Pressed),
+
                             output: state.surfaces[index].monitor_name.clone(),
                         },
                     });
@@ -680,6 +708,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for State {
                         WEnum::Value(wl_pointer::Axis::VerticalScroll) => (0.0, value),
                         _ => (0.0, 0.0),
                     };
+
                     state.pending_events.push(PendingEvent {
                         surface: state.surfaces[index].logical_surface,
                         event: InputEvent::PointerScroll {
@@ -693,6 +722,43 @@ impl Dispatch<wl_pointer::WlPointer, ()> for State {
             }
             _ => {}
         }
+    }
+}
+
+fn handle_keyboard_key(state: &mut State, key: u32, pressed: bool) {
+    let Some(index) = state.keyboard_surface else {
+        return;
+    };
+    state.pending_events.push(PendingEvent {
+        surface: state.surfaces[index].logical_surface,
+        event: InputEvent::Key {
+            keycode: key,
+            pressed,
+        },
+    });
+    if pressed {
+        state.queue_key_input(index, key);
+
+        let key_repeats = state.repeat_interval.is_some()
+            && state.key_state.as_ref().is_some_and(|key_state| {
+                key_state
+                    .get_keymap()
+                    .key_repeats(xkb::Keycode::new(key + 8))
+            });
+
+        if key_repeats {
+            state.repeating_key = Some(RepeatingKey {
+                keycode: key,
+                surface: index,
+                next: Instant::now() + state.repeat_delay,
+            });
+        }
+    } else if state
+        .repeating_key
+        .as_ref()
+        .is_some_and(|repeat| repeat.keycode == key && repeat.surface == index)
+    {
+        state.repeating_key = None;
     }
 }
 
@@ -710,6 +776,7 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for State {
                 state.repeating_key = None;
                 if format.into_result().ok() == Some(wl_keyboard::KeymapFormat::XkbV1) {
                     let context = xkb::Context::new(xkb::CONTEXT_NO_FLAGS);
+
                     match unsafe {
                         xkb::Keymap::new_from_fd(
                             &context,
@@ -724,6 +791,7 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for State {
                     }
                 }
             }
+
             wl_keyboard::Event::Modifiers {
                 mods_depressed,
                 mods_latched,
@@ -739,6 +807,7 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for State {
                 state.repeating_key = None;
                 state.keyboard_surface = state.surface_index(&surface);
             }
+
             wl_keyboard::Event::Leave { surface, .. } => {
                 state.repeating_key = None;
                 if let Some(index) = state.surface_index(&surface) {
@@ -754,6 +823,7 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for State {
                     Duration::from_secs_f64(1.0 / f64::from(rate)).max(Duration::from_millis(1))
                 });
                 state.repeat_delay = Duration::from_millis(delay.max(0) as u64);
+
                 state.repeating_key = None;
             }
             wl_keyboard::Event::Key {
@@ -761,39 +831,8 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for State {
                 state: key_state,
                 ..
             } => {
-                if let Some(index) = state.keyboard_surface {
-                    let pressed =
-                        key_state.into_result().ok() == Some(wl_keyboard::KeyState::Pressed);
-                    state.pending_events.push(PendingEvent {
-                        surface: state.surfaces[index].logical_surface,
-                        event: InputEvent::Key {
-                            keycode: key,
-                            pressed,
-                        },
-                    });
-                    if pressed {
-                        state.queue_key_input(index, key);
-                        if state.repeat_interval.is_some()
-                            && state.key_state.as_ref().is_some_and(|key_state| {
-                                key_state
-                                    .get_keymap()
-                                    .key_repeats(xkb::Keycode::new(key + 8))
-                            })
-                        {
-                            state.repeating_key = Some(RepeatingKey {
-                                keycode: key,
-                                surface: index,
-                                next: Instant::now() + state.repeat_delay,
-                            });
-                        }
-                    } else if state
-                        .repeating_key
-                        .as_ref()
-                        .is_some_and(|repeat| repeat.keycode == key && repeat.surface == index)
-                    {
-                        state.repeating_key = None;
-                    }
-                }
+                let pressed = key_state.into_result().ok() == Some(wl_keyboard::KeyState::Pressed);
+                handle_keyboard_key(state, key, pressed);
             }
             _ => {}
         }
@@ -840,6 +879,7 @@ impl Dispatch<wl_output::WlOutput, ()> for State {
             } else {
                 state.output_names.push((proxy.clone(), name.clone()));
             }
+
             for surface in state
                 .surfaces
                 .iter_mut()

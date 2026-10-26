@@ -45,6 +45,7 @@ impl Widget for Memory {
                 None
             }
         };
+
         self.last_refresh = Some(Instant::now());
         if self.state == state {
             return false;

@@ -120,6 +120,7 @@ impl X11Backend {
                             .and_then(|cookie| cookie.reply().ok())
                             .map(|reply| String::from_utf8_lossy(&reply.name).into_owned())
                             .unwrap_or_else(|| format!("x11-monitor-{}", monitor.name));
+
                         Monitor {
                             name,
                             x: monitor.x,
@@ -133,6 +134,7 @@ impl X11Backend {
             .unwrap_or_else(|| {
                 vec![Monitor {
                     name: "x11-monitor-0".to_string(),
+
                     x: 0,
                     y: 0,
                     width: screen.width_in_pixels,
@@ -178,6 +180,7 @@ impl X11Backend {
             .map_err(|error| crate::Error::X11Image(error.to_string()))?
             .reply()
             .map_err(|error| crate::Error::X11Image(error.to_string()))?;
+
         let image = Image::get_from_reply(
             self.connection.setup(),
             monitor.width,
@@ -185,6 +188,7 @@ impl X11Backend {
             reply,
         )
         .map_err(|error| crate::Error::X11Image(error.to_string()))?;
+
         let capacity = monitor.width as usize * monitor.height as usize * 4;
         let mut data = Vec::with_capacity(capacity);
         for y in 0..monitor.height {

@@ -42,6 +42,7 @@ impl Widget for Battery {
                 }
             };
             self.last_refresh = Some(Instant::now());
+
             if self.state != state {
                 self.state = state;
                 return true;

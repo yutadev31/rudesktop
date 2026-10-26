@@ -90,6 +90,7 @@ pub fn run_daemon() -> Result<(), String> {
                     .recv()
                     .map_err(|_| "clipboard provider stopped".to_owned())?;
             }
+
             if Instant::now() >= deadline {
                 return Err(match last_probe_error {
                     Some(error) => format!("timed out waiting to confirm clipboard copy: {error}"),
@@ -133,6 +134,7 @@ fn selection_matches(
             .clipboard(LinuxClipboardKind::Clipboard)
             .text()
             .map(|actual| actual == *text),
+
         Content::Image(image) => clipboard
             .get()
             .clipboard(LinuxClipboardKind::Clipboard)

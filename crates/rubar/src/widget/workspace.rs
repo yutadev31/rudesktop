@@ -66,6 +66,7 @@ impl Workspace {
                     "rubar: invalid workspace urgent_color `{}`: {error}; using #f7768e",
                     config.urgent_color
                 );
+
                 [247, 118, 142, 255]
             }),
             active_indicator_at_top: match config.active_indicator_position.as_str() {
@@ -82,6 +83,7 @@ impl Workspace {
             spacing: config.spacing,
             monitor_name: None,
             workspace_targets: HashMap::new(),
+
             state: None,
             client,
         }
@@ -123,36 +125,37 @@ impl Widget for Workspace {
             self.monitor_name.clone(),
             workspaces.iter().map(WorkspaceTarget::from).collect(),
         );
+
         WidgetContent::Buttons(
             workspaces
                 .into_iter()
-                .map(|workspace| WidgetButton {
-                    text: Some(
-                        self.format
-                            .replace("{workspaces}", &workspace.text)
-                            .replace("{active}", &active_id),
-                    ),
-                    icon: None,
-                    padding: Some(self.padding),
-                    max_width: None,
-                    bold: Some(workspace.active),
-                    color: if workspace.urgent {
+                .map(|workspace| {
+                    let color = if workspace.urgent {
                         Some(self.urgent_color)
                     } else if workspace.active {
                         Some(self.active_color)
                     } else {
                         None
-                    },
-                    background: None,
-                    indicator: workspace.active_on_monitor.then_some((
-                        if workspace.urgent {
-                            self.urgent_color
-                        } else {
-                            self.active_color
-                        },
-                        self.active_indicator_height,
-                        self.active_indicator_at_top,
-                    )),
+                    };
+                    let text = self
+                        .format
+                        .replace("{workspaces}", &workspace.text)
+                        .replace("{active}", &active_id);
+
+                    WidgetButton {
+                        text: Some(text),
+                        icon: None,
+                        padding: Some(self.padding),
+                        max_width: None,
+                        bold: Some(workspace.active),
+                        color,
+                        background: None,
+                        indicator: workspace.active_on_monitor.then_some((
+                            color.unwrap_or(self.active_color),
+                            self.active_indicator_height,
+                            self.active_indicator_at_top,
+                        )),
+                    }
                 })
                 .collect(),
         )
@@ -174,6 +177,7 @@ impl Widget for Workspace {
         let Some(target) = target else {
             return;
         };
+
         if let Err(error) =
             self.client
                 .switch_to(target.id, Some(&target.monitor), target.local_index)
@@ -203,6 +207,7 @@ fn render_workspaces(state: &WorkspaceState, monitor_name: Option<&str>) -> Vec<
         .filter(|workspace| monitor_name.is_none_or(|name| workspace.monitor == name))
         .map(|workspace| {
             let index = monitor_indices.entry(workspace.monitor_id).or_insert(0);
+
             *index += 1;
             let local_index = workspace.name.parse::<i64>().ok().map(|_| *index);
             let text = if local_index.is_some() {
@@ -246,6 +251,7 @@ mod tests {
                 Workspace {
                     id: 2,
                     name: "dev".to_string(),
+
                     monitor_id: 0,
                     monitor: "DP-1".to_string(),
                     urgent: false,
@@ -260,42 +266,42 @@ mod tests {
                     active: false,
                 },
             ],
+
             active_id: 2,
             active_monitor_id: 0,
             active_ids: HashMap::from([("DP-1".to_string(), 2), ("HDMI-A-1".to_string(), 11)]),
         };
-        assert_eq!(
-            render_workspaces(&state, None),
-            vec![
-                RenderedWorkspace {
-                    id: 1,
-                    monitor: "DP-1".to_string(),
-                    local_index: Some(1),
-                    text: "1".to_string(),
-                    active: false,
-                    active_on_monitor: false,
-                    urgent: false
-                },
-                RenderedWorkspace {
-                    id: 2,
-                    monitor: "DP-1".to_string(),
-                    local_index: None,
-                    text: "dev".to_string(),
-                    active: true,
-                    active_on_monitor: true,
-                    urgent: false
-                },
-                RenderedWorkspace {
-                    id: 11,
-                    monitor: "HDMI-A-1".to_string(),
-                    local_index: Some(1),
-                    text: "1".to_string(),
-                    active: false,
-                    active_on_monitor: false,
-                    urgent: false
-                },
-            ]
-        );
+        let first = RenderedWorkspace {
+            id: 1,
+            monitor: "DP-1".to_string(),
+            local_index: Some(1),
+            text: "1".to_string(),
+            active: false,
+            active_on_monitor: false,
+            urgent: false,
+        };
+
+        let second = RenderedWorkspace {
+            id: 2,
+            monitor: "DP-1".to_string(),
+            local_index: None,
+            text: "dev".to_string(),
+            active: true,
+            active_on_monitor: true,
+            urgent: false,
+        };
+
+        let third = RenderedWorkspace {
+            id: 11,
+            monitor: "HDMI-A-1".to_string(),
+            local_index: Some(1),
+            text: "1".to_string(),
+            active: false,
+            active_on_monitor: false,
+            urgent: false,
+        };
+
+        assert_eq!(render_workspaces(&state, None), vec![first, second, third]);
         assert_eq!(
             render_workspaces(&state, Some("HDMI-A-1")),
             vec![RenderedWorkspace {
@@ -327,6 +333,7 @@ mod tests {
             active_monitor_id: 1,
             active_ids: HashMap::from([("DP-1".to_string(), 1)]),
         };
+
         let rendered = render_workspaces(&state, Some("DP-1"));
         assert!(rendered.iter().all(|workspace| workspace.active));
         assert!(rendered.iter().all(|workspace| workspace.active_on_monitor));

@@ -153,6 +153,7 @@ fn stream_events(
         let value: Value = serde_json::from_str(&line)
             .map_err(|error| format!("could not parse niri event: {error}"))?;
         tracing::trace!(event = ?value, "received niri event");
+
         if value.get("Ok").is_some() {
             continue;
         }
@@ -166,6 +167,7 @@ fn stream_events(
             Ok(false) => {}
             Err(error) => tracing::warn!("rubar: could not update niri workspaces: {error}"),
         }
+
         match update_title(&value, &mut window_state) {
             Ok(Some(next)) => match title.write() {
                 Ok(mut current) => *current = next,
@@ -191,6 +193,7 @@ fn update_workspaces(value: &Value, state: &mut Option<WorkspaceState>) -> Resul
             .get("focused")
             .and_then(Value::as_bool)
             .ok_or("WorkspaceActivated has no focused flag")?;
+
         let workspace = current
             .workspaces
             .iter()
@@ -205,6 +208,7 @@ fn update_workspaces(value: &Value, state: &mut Option<WorkspaceState>) -> Resul
     }
     if let Some(event) = value.get("WorkspaceUrgencyChanged") {
         let id = event_id(event, "WorkspaceUrgencyChanged")?;
+
         let urgent = event
             .get("urgent")
             .and_then(Value::as_bool)
@@ -243,6 +247,7 @@ fn parse_workspaces(event: &Value) -> Result<WorkspaceState, String> {
     outputs.sort_unstable();
     outputs.dedup();
     let mut active_id = 0;
+
     let mut active_monitor_id = 0;
     let mut active_ids = HashMap::new();
     let mut workspaces = Vec::with_capacity(raw.len());
@@ -259,6 +264,7 @@ fn parse_workspaces(event: &Value) -> Result<WorkspaceState, String> {
         if workspace.is_active {
             active_ids.insert(monitor.clone(), id);
         }
+
         workspaces.push(Workspace {
             id,
             name,
@@ -276,6 +282,7 @@ fn parse_workspaces(event: &Value) -> Result<WorkspaceState, String> {
                 .cmp(&b.name.parse::<i64>().unwrap_or(i64::MAX))
         })
     });
+
     Ok(WorkspaceState {
         workspaces,
         active_id,
@@ -297,6 +304,7 @@ fn update_title(event: &Value, state: &mut WindowState) -> Result<Option<Option<
             .iter()
             .find(|window| window.is_focused)
             .map(|window| window.id);
+
         state.windows = windows
             .into_iter()
             .map(|window| (window.id, window.title))
@@ -312,6 +320,7 @@ fn update_title(event: &Value, state: &mut WindowState) -> Result<Option<Option<
         if window.is_focused {
             state.focused_id = Some(window.id);
         }
+
         state.windows.insert(window.id, window.title);
     } else if let Some(focus) = event.get("WindowFocusChanged") {
         state.focused_id = match focus.get("id") {
@@ -325,6 +334,7 @@ fn update_title(event: &Value, state: &mut WindowState) -> Result<Option<Option<
             .and_then(Value::as_u64)
             .ok_or("WindowClosed has no valid id")?;
         state.windows.remove(&id);
+
         if state.focused_id == Some(id) {
             state.focused_id = None;
         }
@@ -427,6 +437,7 @@ mod tests {
             .unwrap(),
             Some(Some("Terminal".to_string()))
         );
+
         assert_eq!(
             update_title(&json!({"WindowFocusChanged": {"id": 2}}), &mut state).unwrap(),
             Some(Some("Browser".to_string()))

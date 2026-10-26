@@ -216,6 +216,7 @@ fn crop_frame(
     {
         return Err(crate::Error::InvalidRegion);
     }
+
     let source_stride = (frame.width as usize)
         .checked_mul(4)
         .ok_or(crate::Error::InvalidImageBuffer)?;
@@ -232,6 +233,7 @@ fn crop_frame(
     {
         return Err(crate::Error::InvalidImageBuffer);
     }
+
     let mut data = Vec::with_capacity(capacity);
     for row in y..y + height {
         let start = row as usize * source_stride + x as usize * 4;

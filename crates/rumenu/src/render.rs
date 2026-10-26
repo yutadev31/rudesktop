@@ -43,6 +43,7 @@ impl Renderer {
                     }
                 }
             })?;
+
         Ok(Self {
             font_system: FontSystem::new(),
             swash_cache: SwashCache::new(),
@@ -70,6 +71,7 @@ impl Renderer {
                         tracing::error!("icon loader stopped before completing pending requests");
                         self.icon_worker_failed = true;
                     }
+
                     break;
                 }
             }
@@ -95,6 +97,7 @@ impl Renderer {
             42.0,
             color(&self.config.selection)?,
         );
+
         self.text(
             &mut pixmap,
             if query.is_empty() {
@@ -109,6 +112,7 @@ impl Renderer {
         );
         for (row, entry) in entries.iter().enumerate() {
             let y = 66 + row as i32 * 44;
+
             if y + 44 > size.height as i32 {
                 break;
             }
@@ -122,6 +126,7 @@ impl Renderer {
                     color(&self.config.selection)?,
                 );
             }
+
             if let Some(icon) = &entry.icon {
                 if !self.icons.contains_key(icon)
                     && self.pending_icons.insert(icon.clone())
@@ -138,6 +143,7 @@ impl Renderer {
                     draw_icon(&mut pixmap, pixels, 22, y + 5);
                 }
             }
+
             self.text(
                 &mut pixmap,
                 &entry.name,
@@ -157,6 +163,7 @@ impl Renderer {
                 );
             }
         }
+
         if let Some(error) = error {
             self.text(
                 &mut pixmap,
@@ -190,6 +197,7 @@ impl Renderer {
             (rgba.blue() * 255.0) as u8,
             255,
         );
+
         let mut buffer = Buffer::new(
             &mut self.font_system,
             Metrics::new(font_size, font_size * 1.25),
@@ -204,6 +212,7 @@ impl Renderer {
             .color(text_color);
         buffer.set_text(value, &attrs, Shaping::Advanced, None);
         buffer.shape_until_scroll(&mut self.font_system, false);
+
         buffer.draw(
             &mut self.font_system,
             &mut self.swash_cache,
@@ -218,6 +227,7 @@ impl Renderer {
                 let [sr, sg, sb, alpha] = glyph_color.as_rgba();
                 let data = pixmap.data_mut();
                 let inverse = 255 - alpha as u16;
+
                 for (i, source) in [sr, sg, sb].into_iter().enumerate() {
                     data[offset + i] = ((u16::from(source) * u16::from(alpha)
                         + u16::from(data[offset + i]) * inverse)
@@ -266,6 +276,7 @@ fn draw_icon(pixmap: &mut Pixmap, icon: &Icon, x: i32, y: i32) {
             if px < 0 || py < 0 || px >= pixmap.width() as i32 || py >= pixmap.height() as i32 {
                 continue;
             }
+
             let source = ((row as u32 * icon.width + col as u32) * 4) as usize;
             let target = ((py as u32 * pixmap.width() + px as u32) * 4) as usize;
             let alpha = icon.pixels[source + 3] as u16;
@@ -320,6 +331,7 @@ mod tests {
             keywords: String::new(),
             icon: Some(path.to_string_lossy().into_owned()),
             path: directory.path().join("example.desktop"),
+
             exec: "example".into(),
             terminal: false,
             working_dir: None,

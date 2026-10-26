@@ -39,6 +39,7 @@ impl Config {
                     );
                     config.output.path_format = None;
                 }
+
                 Ok(config)
             }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),

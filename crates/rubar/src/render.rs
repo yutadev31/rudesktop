@@ -213,6 +213,7 @@ impl BarRenderer {
         let mut items = self.prepare_items(widgets, metrics);
         let widget_spacing = layout_i32(self.config.widget_spacing);
         let item_spacing = layout_i32(self.config.item_spacing);
+
         let total_width = items
             .iter()
             .map(PreparedItem::width)
@@ -269,6 +270,7 @@ impl BarRenderer {
                     background: None,
                     indicator: None,
                 }],
+
                 RenderContent::Buttons(buttons) => buttons,
             };
             let content_spacing = widget.content_spacing().map(layout_i32);
@@ -281,6 +283,7 @@ impl BarRenderer {
                     let (text, width) = if let Some(max_width) = button.max_width {
                         let available =
                             layout_i32(max_width).saturating_sub(button_padding.saturating_mul(2));
+
                         self.fit_text(
                             &text,
                             available,
@@ -296,6 +299,7 @@ impl BarRenderer {
                         (text, width)
                     };
                     button.text = Some(text);
+
                     width
                 } else {
                     0
@@ -328,6 +332,7 @@ impl BarRenderer {
             .color
             .map(|[r, g, b, a]| TextColor::rgba(r, g, b, a))
             .unwrap_or(metrics.text_color);
+
         self.draw_button_background(pixmap, left, right, metrics.height, button.background);
         self.draw_button_indicator(pixmap, left, right, metrics.height, button.indicator);
         self.current_hitboxes.push(Hitbox::new(
@@ -345,6 +350,7 @@ impl BarRenderer {
                     .saturating_add(item.padding)
                     .saturating_add(item.text_width),
             };
+
             self.draw_text(pixmap, text, text_right, metrics, button_color, bold);
         }
         if let Some(icon) = button.icon.as_ref() {
@@ -403,6 +409,7 @@ impl BarRenderer {
         if right <= left || indicator_height == 0 || height == 0 {
             return;
         }
+
         let mut paint = Paint::default();
         paint.set_color_rgba8(r, g, b, a);
         let left = left.max(0) as f32;
@@ -436,6 +443,7 @@ impl BarRenderer {
         if bold {
             attrs = attrs.weight(Weight::BOLD);
         }
+
         buffer.set_text(text, &attrs, Shaping::Advanced, None);
         buffer.shape_until_scroll(&mut self.font_system, false);
         buffer
@@ -476,6 +484,7 @@ impl BarRenderer {
             let candidate_width = self.measure_text(&candidate, metrics, bold);
             if candidate_width <= max_width {
                 low = middle;
+
                 width = candidate_width;
             } else {
                 high = middle - 1;
@@ -499,6 +508,7 @@ impl BarRenderer {
             Metrics::new(metrics.font_size, line_height),
         );
         buffer.set_size(Some(pixmap.width() as f32), Some(metrics.height as f32));
+
         buffer.set_wrap(Wrap::None);
         let mut attrs = Attrs::new().color(text_color);
         if !self.config.font_family.is_empty() {
@@ -531,6 +541,7 @@ impl BarRenderer {
                 }
                 let pixel = (py as u32 * pixmap.width() + px as u32) as usize * 4;
                 let [r, g, b, coverage] = color.as_rgba();
+
                 let data = pixmap.data_mut();
                 let inverse = 255 - coverage as u16;
                 let blend = |source: u8, destination: u8| {
@@ -564,6 +575,7 @@ impl BarRenderer {
         for iy in 0..icon.height {
             for ix in 0..icon.width {
                 let px = x.saturating_add(layout_i32(ix));
+
                 let py = y.saturating_add(layout_i32(iy));
                 if px < 0 || py < 0 || px >= pixmap_width || py >= pixmap_height {
                     continue;
@@ -578,6 +590,7 @@ impl BarRenderer {
                 ];
                 let da = pixmap.data()[destination + 3];
                 let alpha = sa as u16 + ((da as u16 * (255 - sa as u16)) / 255);
+
                 if alpha == 0 {
                     continue;
                 }
@@ -789,32 +802,33 @@ mod tests {
 
     impl RenderWidget for ExtremeLayoutWidget {
         fn content(&mut self) -> RenderContent {
-            RenderContent::Buttons(vec![
-                RenderButton {
-                    text: Some("text".to_string()),
-                    icon: None,
-                    padding: Some(u32::MAX),
-                    max_width: Some(u32::MAX),
-                    bold: None,
-                    color: None,
-                    background: None,
-                    indicator: None,
-                },
-                RenderButton {
-                    text: None,
-                    icon: Some(RenderIcon {
-                        width: u32::MAX,
-                        height: 1,
-                        pixels: Vec::new(),
-                    }),
-                    padding: None,
-                    max_width: None,
-                    bold: None,
-                    color: None,
-                    background: None,
-                    indicator: None,
-                },
-            ])
+            let text_button = RenderButton {
+                text: Some("text".to_string()),
+                icon: None,
+                padding: Some(u32::MAX),
+                max_width: Some(u32::MAX),
+                bold: None,
+                color: None,
+                background: None,
+                indicator: None,
+            };
+
+            let icon_button = RenderButton {
+                text: None,
+                icon: Some(RenderIcon {
+                    width: u32::MAX,
+                    height: 1,
+                    pixels: Vec::new(),
+                }),
+                padding: None,
+                max_width: None,
+                bold: None,
+                color: None,
+                background: None,
+                indicator: None,
+            };
+
+            RenderContent::Buttons(vec![text_button, icon_button])
         }
 
         fn content_spacing(&self) -> Option<u32> {
@@ -878,6 +892,7 @@ mod tests {
             font_size: config.font_size,
             text_color: renderer.text_color,
         };
+
         let mut widgets: Vec<Box<dyn RenderWidget>> = vec![Box::new(ExtremeLayoutWidget)];
         let items = renderer.prepare_items(&mut widgets, &metrics);
         assert_eq!(items[0].content_spacing, Some(i32::MAX));
@@ -905,6 +920,7 @@ mod tests {
         let (fitted, width) = renderer.fit_text(title, budget, &metrics, false);
         assert!(fitted.ends_with('…'));
         assert!(width <= budget);
+
         let prefix = fitted.strip_suffix('…').unwrap();
         assert!(title.starts_with(prefix));
         assert!(

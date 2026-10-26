@@ -48,6 +48,7 @@ impl Volume {
             commands,
             updates,
             format_out: config.format_out.clone(),
+
             format_out_muted: config.format_out_muted.clone(),
             format_in: config.format_in.clone(),
             format_in_muted: config.format_in_muted.clone(),
@@ -86,6 +87,7 @@ impl Widget for Volume {
                 output.muted,
             )));
         }
+
         if let Some(input) = state.input {
             self.visible_channels.push(true);
             buttons.push(volume_button(format_volume(
@@ -116,6 +118,7 @@ impl Widget for Volume {
         .as_mut() else {
             return;
         };
+
         channel.muted = !channel.muted;
         let revision = self.revision.wrapping_add(1);
         if let Err(error) = self.commands.send(VolumeCommand {
@@ -147,6 +150,7 @@ impl Widget for Volume {
         .as_mut() else {
             return;
         };
+
         let change = match direction {
             ScrollDirection::Up => i16::from(self.scroll_step),
             ScrollDirection::Down => -i16::from(self.scroll_step),
@@ -183,6 +187,7 @@ fn run_audio_worker(
     let mut last_state = None;
     let mut last_error: Option<String> = None;
     let mut processed_revision = 0;
+
     loop {
         match provider.read() {
             Ok(state) => {
@@ -200,6 +205,7 @@ fn run_audio_worker(
                     }
                 }
             }
+
             Err(error) => {
                 if last_error.as_deref() != Some(error.as_str()) {
                     tracing::warn!("rubar: could not read audio state: {error}");
@@ -215,6 +221,7 @@ fn run_audio_worker(
                         input: false,
                         muted,
                     } => provider.set_muted(muted),
+
                     VolumeAction::SetMuted { input: true, muted } => provider.set_in_muted(muted),
                     VolumeAction::SetPercent {
                         input: false,
@@ -227,6 +234,7 @@ fn run_audio_worker(
                 };
                 if let Err(error) = result {
                     tracing::warn!("rubar: could not change audio state: {error}");
+
                     if let Some(state) = last_state
                         && updates
                             .send(VolumeUpdate {
@@ -293,6 +301,7 @@ mod tests {
             scroll_step: config.scroll_step,
             state: None,
             visible_channels: Vec::new(),
+
             revision: 0,
         };
         state_sender
@@ -308,6 +317,7 @@ mod tests {
             })
             .unwrap();
         widget.poll_changed();
+
         widget.content();
         widget.on_scroll(ScrollDirection::Up, 0);
         assert!(matches!(
@@ -317,6 +327,7 @@ mod tests {
                 percent: 45
             }
         ));
+
         state_sender
             .send(VolumeUpdate {
                 revision: 0,

@@ -27,6 +27,7 @@ impl ProcessProvider for ProcFs {
             let entry = entry
                 .map_err(|error| format!("could not enumerate {}: {error}", self.path.display()))?;
             let name = entry.file_name();
+
             if name
                 .to_str()
                 .is_some_and(|name| name.parse::<u32>().is_ok())
@@ -53,6 +54,7 @@ fn check_proc_mount(mounts: &str, path: &std::path::Path) -> Result<(), String> 
         if fields.next() != Some("proc") {
             return Err(format!("{mount_point} is not mounted as procfs"));
         }
+
         let options = fields
             .next()
             .ok_or_else(|| format!("mount options are missing for {mount_point}"))?;
@@ -104,6 +106,7 @@ mod tests {
                 ),
             )
             .unwrap();
+
             assert!(
                 ProcFs::new(dir.path())
                     .read()

@@ -69,6 +69,7 @@ pub(crate) fn connect(persistent_workspaces: &[i64]) -> Arc<dyn WmClient> {
                 niri::NiriClient::new(RECONNECT_INTERVAL)
                     .map(|provider| Arc::new(provider) as Arc<dyn WmClient>),
             ),
+
             "mango" | "Mango" | "mangowm" => Some(
                 mango::MangoClient::new(RECONNECT_INTERVAL)
                     .map(|provider| Arc::new(provider) as Arc<dyn WmClient>),

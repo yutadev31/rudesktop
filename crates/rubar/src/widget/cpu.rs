@@ -46,6 +46,7 @@ impl Widget for Cpu {
                 None
             }
         };
+
         self.last_refresh = Some(Instant::now());
         if self.state == state {
             return false;

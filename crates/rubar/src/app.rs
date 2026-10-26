@@ -58,6 +58,7 @@ impl App {
         let last_contents = config_path
             .as_ref()
             .and_then(|path| fs::read_to_string(path).ok());
+
         Ok(Self {
             renderer: BarRenderer::new(&config.style)?,
             widgets,
@@ -92,6 +93,7 @@ impl App {
             )];
             Box::new(shell_surface::backend::x11::X11Backend) as Box<dyn Backend>
         };
+
         loop {
             backend.run(self)?;
             if !self.restart_backend {
@@ -127,6 +129,7 @@ impl App {
                 return;
             }
         };
+
         if contents == self.last_contents {
             return;
         }
@@ -155,6 +158,7 @@ impl App {
         } else {
             wm::connect(&config.workspace.persistent_workspaces)
         };
+
         let available_names: Vec<String> = self
             .active_config
             .widgets
@@ -166,6 +170,7 @@ impl App {
             .chain(self.dormant_trays.iter().map(|(name, _)| name.clone()))
             .collect();
         let mut reserved = vec![false; available_names.len()];
+
         let left = plan_widgets(
             &config.widgets.left,
             config,
@@ -182,6 +187,7 @@ impl App {
             &available_names,
             &mut reserved,
         )?;
+
         let right = plan_widgets(
             &config.widgets.right,
             config,
@@ -206,6 +212,7 @@ impl App {
             right: materialize_widgets(right, &mut available, config),
         };
         let surfaces = vec![panel_surface_config(&config.style, self.x11_width)];
+
         self.restart_backend = self.surfaces[0].size.height != surfaces[0].size.height;
         self.renderer = renderer;
         self._ipc_client = ipc_client;
@@ -221,6 +228,7 @@ impl App {
                     .map(|widget| (name, widget))
             })
             .collect();
+
         self.surfaces = surfaces;
         self.active_config = config.clone();
         self.frames.clear();
@@ -249,6 +257,7 @@ impl Shell for App {
             return Ok(frame.pixels.clone());
         }
         tracing::trace!(width = size.width, height = size.height, output = ?output, "rendering bar");
+
         self.widgets.set_monitor_name(output);
         let pixels = self.renderer.render(
             size.width.max(1),
@@ -286,8 +295,10 @@ impl Shell for App {
                     &mut self.widgets.center,
                     &mut self.widgets.right,
                 );
+
                 self.revision = self.revision.wrapping_add(1);
             }
+
             InputEvent::PointerScroll {
                 position,
                 delta_y,
@@ -295,13 +306,15 @@ impl Shell for App {
                 ..
             } if delta_y != 0.0 => {
                 self.widgets.set_monitor_name(output.as_deref());
+                let direction = if delta_y < 0.0 {
+                    crate::widget::ScrollDirection::Up
+                } else {
+                    crate::widget::ScrollDirection::Down
+                };
+
                 self.renderer.handle_scroll(
                     position.x,
-                    if delta_y < 0.0 {
-                        crate::widget::ScrollDirection::Up
-                    } else {
-                        crate::widget::ScrollDirection::Down
-                    },
+                    direction,
                     output.as_deref(),
                     &mut self.widgets.left,
                     &mut self.widgets.center,
@@ -383,6 +396,7 @@ fn plan_widgets(
                     .position(|(index, old_name)| !reserved[index] && old_name == name)
             {
                 reserved[index] = true;
+
                 return Ok(WidgetPlan::Reuse(index));
             }
             create_widget(name, config, ipc_client).map(WidgetPlan::New)
@@ -442,6 +456,7 @@ fn create_widget(
         WidgetKind::Memory => {
             Ok(Box::new(Memory::new(&config.memory)) as Box<dyn crate::widget::Widget>)
         }
+
         WidgetKind::Cpu => Ok(Box::new(Cpu::new(&config.cpu)) as Box<dyn crate::widget::Widget>),
         WidgetKind::Process => {
             Ok(Box::new(Process::new(&config.process)) as Box<dyn crate::widget::Widget>)
