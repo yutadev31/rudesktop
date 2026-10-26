@@ -26,4 +26,4 @@ The daemon and `toggle` command communicate through a per-display socket in `$XD
 
 ## Supported platforms
 
-`rumenu` currently supports Linux and FreeBSD. The long-term goal is to support platforms that run X11 or Wayland, including Linux, the BSD family, illumos, and GNU Hurd.
+`rumenu` currently supports Linux. The long-term goal is to support platforms that run X11 or Wayland, including Linux, the BSD family, illumos, and GNU Hurd.
