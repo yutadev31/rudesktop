@@ -6,6 +6,10 @@ Workspace and window information is available through Hyprland, Sway, i3, niri, 
 
 On MangoWM, the `workspace` widget shows tags on each monitor and supports clicking a tag to view it. The `window` widget shows the focused client title. Run `rubar` within the MangoWM session so it inherits `MANGO_INSTANCE_SIGNATURE`.
 
+## Supported platforms
+
+`rubar` currently supports Linux and FreeBSD. The long-term goal is to support platforms that run X11 or Wayland, including Linux, the BSD family, illumos, and GNU Hurd.
+
 ## Build and run
 
 The Nix development shell provides the Rust toolchain and native build dependencies:
