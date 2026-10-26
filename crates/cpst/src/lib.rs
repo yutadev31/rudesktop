@@ -4,6 +4,7 @@ use arboard::{Clipboard, ImageData};
 
 const PNG_SIGNATURE: &[u8] = b"\x89PNG\r\n\x1a\n";
 
+#[derive(Clone)]
 enum Content {
     Text(String),
     Image(ImageData<'static>),
@@ -41,21 +42,89 @@ pub fn run_daemon() -> Result<(), String> {
 
     #[cfg(target_os = "linux")]
     {
-        use arboard::{LinuxClipboardKind, SetExtLinux};
+        use arboard::{GetExtLinux, LinuxClipboardKind, SetExtLinux};
+        use std::sync::mpsc;
+        use std::time::{Duration, Instant};
 
         let content = parse_content(&input)?;
         drop(input);
-        let mut clipboard =
+        let expected = content.clone();
+        let (sender, receiver) = mpsc::sync_channel(1);
+        // The set operation blocks while this process owns the selection.
+        std::thread::Builder::new()
+            .name("cpst-clipboard-provider".to_owned())
+            .spawn(move || {
+                let result = (|| {
+                    let mut clipboard = Clipboard::new()
+                        .map_err(|error| format!("failed to open clipboard: {error}"))?;
+                    let operation = clipboard
+                        .set()
+                        .clipboard(LinuxClipboardKind::Clipboard)
+                        .wait();
+                    match content {
+                        Content::Text(text) => operation.text(text),
+                        Content::Image(image) => operation.image(image),
+                    }
+                    .map_err(|error| format!("failed to set clipboard: {error}"))
+                })();
+                let _ = sender.send(result);
+            })
+            .map_err(|error| format!("failed to start clipboard provider: {error}"))?;
+
+        let deadline = Instant::now() + Duration::from_secs(30);
+        let mut probe =
             Clipboard::new().map_err(|error| format!("failed to open clipboard: {error}"))?;
-        let operation = clipboard
-            .set()
-            .clipboard(LinuxClipboardKind::Clipboard)
-            .wait();
-        match content {
-            Content::Text(text) => operation.text(text),
-            Content::Image(image) => operation.image(image),
+        let mut last_probe_error = None;
+        // Read back the selection before telling the parent that copying succeeded.
+        loop {
+            match receiver.try_recv() {
+                Ok(Err(error)) => return Err(error),
+                Ok(Ok(())) => return Err("clipboard ownership ended before confirmation".into()),
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    return Err("clipboard provider stopped before confirmation".into());
+                }
+                Err(mpsc::TryRecvError::Empty) => {}
+            }
+
+            let readback = match &expected {
+                Content::Text(text) => probe
+                    .get()
+                    .clipboard(LinuxClipboardKind::Clipboard)
+                    .text()
+                    .map(|actual| actual == *text),
+                Content::Image(image) => probe
+                    .get()
+                    .clipboard(LinuxClipboardKind::Clipboard)
+                    .image()
+                    .map(|actual| {
+                        actual.width == image.width
+                            && actual.height == image.height
+                            && actual.bytes == image.bytes
+                    }),
+            };
+            let confirmed = match readback {
+                Ok(confirmed) => confirmed,
+                Err(error) => {
+                    last_probe_error = Some(error);
+                    false
+                }
+            };
+            if confirmed {
+                io::stdout()
+                    .write_all(b"OK\n")
+                    .map_err(|error| format!("failed to confirm clipboard copy: {error}"))?;
+                return receiver
+                    .recv()
+                    .map_err(|_| "clipboard provider stopped".to_owned())?;
+            }
+            if Instant::now() >= deadline {
+                return Err(match last_probe_error {
+                    Some(error) => format!("timed out waiting to confirm clipboard copy: {error}"),
+                    None => "timed out waiting to confirm clipboard copy".to_owned(),
+                });
+            }
+            std::thread::sleep(Duration::from_millis(20));
         }
-        .map_err(|error| format!("failed to set clipboard: {error}"))
     }
 
     #[cfg(not(target_os = "linux"))]
@@ -101,7 +170,7 @@ fn spawn_daemon(input: Vec<u8>) -> Result<(), String> {
     command
         .arg("__internal_daemonize")
         .stdin(Stdio::piped())
-        .stdout(Stdio::null())
+        .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .current_dir("/");
     let mut child = command
@@ -113,7 +182,24 @@ fn spawn_daemon(input: Vec<u8>) -> Result<(), String> {
         .ok_or_else(|| "failed to open clipboard daemon stdin".to_owned())?;
     stdin
         .write_all(&input)
-        .map_err(|error| format!("failed to send data to clipboard daemon: {error}"))
+        .map_err(|error| format!("failed to send data to clipboard daemon: {error}"))?;
+    drop(stdin);
+
+    let mut response = String::new();
+    use std::io::BufRead;
+    io::BufReader::new(
+        child
+            .stdout
+            .take()
+            .ok_or_else(|| "failed to read clipboard daemon response".to_owned())?,
+    )
+    .read_line(&mut response)
+    .map_err(|error| format!("failed to read clipboard daemon response: {error}"))?;
+    match response.trim_end() {
+        "OK" => Ok(()),
+        error if let Some(error) = error.strip_prefix("ERR ") => Err(error.to_owned()),
+        _ => Err("clipboard daemon stopped without confirming the copy".to_owned()),
+    }
 }
 
 pub fn paste() -> Result<(), String> {
