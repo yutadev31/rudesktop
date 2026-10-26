@@ -10,7 +10,7 @@ fn main() {
     arguments.next();
     if arguments.next().as_deref() == Some("__internal_daemonize") {
         if let Err(error) = run_daemon() {
-            eprintln!("cpy: {error}");
+            println!("ERR {}", error.replace('\n', " "));
             std::process::exit(1);
         }
         return;
