@@ -6,6 +6,6 @@ pub mod wayland;
 pub mod x11;
 
 pub use crate::{
-    Anchors, Backend, InputEvent, KeyboardInteractivity, Layer, MouseButton, OutputSelection,
+    Anchors, Backend, InputEvent, Key, KeyboardInteractivity, Layer, MouseButton, OutputSelection,
     Position, PositionF64, Shell, Size, SurfaceConfig, SurfaceId,
 };

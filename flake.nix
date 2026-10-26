@@ -42,12 +42,14 @@
         buildInputs = with pkgs; [
           libpulseaudio
           libxcb
+          libxkbcommon
           wayland
         ];
 
         lockfile = builtins.fromTOML (builtins.readFile ./Cargo.lock);
         cpstPackage = builtins.head (builtins.filter (package: package.name == "cpst") lockfile.package);
         rubarPackage = builtins.head (builtins.filter (package: package.name == "rubar") lockfile.package);
+        rumenuPackage = builtins.head (builtins.filter (package: package.name == "rumenu") lockfile.package);
         shotPackage = builtins.head (builtins.filter (package: package.name == "shot") lockfile.package);
 
         cpst = pkgs.rustPlatform.buildRustPackage {
@@ -94,6 +96,18 @@
           '';
         };
 
+        rumenu = pkgs.rustPlatform.buildRustPackage {
+          pname = "rumenu";
+          version = rumenuPackage.version;
+          src = ./.;
+
+          cargoLock.lockFile = ./Cargo.lock;
+          cargoBuildFlags = [ "--package" "rumenu" ];
+          cargoTestFlags = [ "--package" "rumenu" ];
+
+          inherit nativeBuildInputs buildInputs;
+        };
+
         shot = pkgs.rustPlatform.buildRustPackage {
           pname = "shot";
           version = shotPackage.version;
@@ -114,7 +128,7 @@
       in
       {
         packages = {
-          inherit cpst rubar shot;
+          inherit cpst rubar rumenu shot;
           default = rubar;
         };
 

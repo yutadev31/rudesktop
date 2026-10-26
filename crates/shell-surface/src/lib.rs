@@ -188,6 +188,21 @@ pub enum InputEvent {
         keycode: u32,
         pressed: bool,
     },
+    /// A resolved key press. `text` is absent for navigation or modifier keys.
+    KeyInput {
+        key: Key,
+        text: Option<String>,
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Key {
+    Escape,
+    Return,
+    Backspace,
+    Up,
+    Down,
+    Other,
 }
 
 /// A pointer position in surface-local coordinates.

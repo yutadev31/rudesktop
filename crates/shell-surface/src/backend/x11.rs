@@ -5,14 +5,14 @@ use x11rb::{
     connection::Connection,
     protocol::xproto::{
         AtomEnum, ClientMessageEvent, ConnectionExt, CreateGCAux, CreateWindowAux, EventMask,
-        ImageFormat, InputFocus, PropMode, WindowClass,
+        ImageFormat, InputFocus, KeyButMask, PropMode, WindowClass,
     },
     rust_connection::RustConnection,
     wrapper::ConnectionExt as WrapperConnectionExt,
 };
 
 use super::{
-    Backend, InputEvent, KeyboardInteractivity, Layer, MouseButton, PositionF64, Shell, Size,
+    Backend, InputEvent, Key, KeyboardInteractivity, Layer, MouseButton, PositionF64, Shell, Size,
     SurfaceConfig, SurfaceId,
 };
 
@@ -30,6 +30,11 @@ impl Backend for X11Backend {
         let (connection, screen_number) = RustConnection::connect(None)?;
         let screen = &connection.setup().roots[screen_number];
         let atoms = Atoms::new(&connection)?.reply()?;
+        let min_keycode = connection.setup().min_keycode;
+        let max_keycode = connection.setup().max_keycode;
+        let keyboard_mapping = connection
+            .get_keyboard_mapping(min_keycode, max_keycode - min_keycode + 1)?
+            .reply()?;
         let mut windows = Vec::with_capacity(configs.len());
 
         for (index, config) in configs.iter().enumerate() {
@@ -45,6 +50,7 @@ impl Backend for X11Backend {
                 | EventMask::BUTTON_RELEASE
                 | EventMask::KEY_PRESS
                 | EventMask::KEY_RELEASE;
+            let event_mask = event_mask | EventMask::FOCUS_CHANGE;
 
             connection.create_window(
                 0,
@@ -121,6 +127,8 @@ impl Backend for X11Backend {
             atoms,
             windows,
             shell,
+            min_keycode,
+            keyboard_mapping,
         };
         for index in 0..state.windows.len() {
             state.redraw(index)?;
@@ -162,6 +170,8 @@ struct State<'a> {
     atoms: Atoms,
     windows: Vec<WindowState>,
     shell: &'a mut dyn Shell,
+    min_keycode: u8,
+    keyboard_mapping: x11rb::protocol::xproto::GetKeyboardMappingReply,
 }
 
 impl State<'_> {
@@ -302,8 +312,23 @@ impl State<'_> {
                     },
                 );
             }
-            Event::KeyPress(event) => self.key_event(event.event, event.detail, true),
-            Event::KeyRelease(event) => self.key_event(event.event, event.detail, false),
+            Event::KeyPress(event) => self.key_event(event.event, event.detail, event.state, true),
+            Event::KeyRelease(event) => {
+                self.key_event(event.event, event.detail, event.state, false)
+            }
+            Event::FocusOut(event) => {
+                if let Some(index) = self.window_index(event.event) {
+                    self.shell
+                        .handle_event(self.windows[index].surface, InputEvent::FocusLost);
+                }
+            }
+            Event::MappingNotify(_) => {
+                let max_keycode = self.connection.setup().max_keycode;
+                self.keyboard_mapping = self
+                    .connection
+                    .get_keyboard_mapping(self.min_keycode, max_keycode - self.min_keycode + 1)?
+                    .reply()?;
+            }
             Event::ClientMessage(ClientMessageEvent { window, data, .. })
                 if data.as_data32()[0] == self.atoms.wm_delete_window =>
             {
@@ -333,7 +358,7 @@ impl State<'_> {
         self.pointer_event(window, event);
     }
 
-    fn key_event(&mut self, window: u32, keycode: u8, pressed: bool) {
+    fn key_event(&mut self, window: u32, keycode: u8, modifiers: KeyButMask, pressed: bool) {
         if let Some(index) = self.window_index(window) {
             self.shell.handle_event(
                 self.windows[index].surface,
@@ -342,6 +367,55 @@ impl State<'_> {
                     pressed,
                 },
             );
+            if pressed {
+                let offset = usize::from(keycode.saturating_sub(self.min_keycode))
+                    * usize::from(self.keyboard_mapping.keysyms_per_keycode);
+                let per_keycode = usize::from(self.keyboard_mapping.keysyms_per_keycode);
+                let alphabetic = self
+                    .keyboard_mapping
+                    .keysyms
+                    .get(offset)
+                    .is_some_and(|symbol| {
+                        (*symbol >= u32::from(b'A') && *symbol <= u32::from(b'Z'))
+                            || (*symbol >= u32::from(b'a') && *symbol <= u32::from(b'z'))
+                    });
+                let shifted = modifiers.contains(KeyButMask::SHIFT)
+                    ^ (alphabetic && modifiers.contains(KeyButMask::LOCK));
+                let altgr = modifiers.contains(KeyButMask::MOD5) && per_keycode >= 4;
+                let column = (usize::from(altgr) * 2 + usize::from(shifted))
+                    .min(per_keycode.saturating_sub(1));
+                let symbol = self
+                    .keyboard_mapping
+                    .keysyms
+                    .get(offset + column)
+                    .copied()
+                    .unwrap_or(0);
+                let key = match symbol {
+                    0xff1b => Key::Escape,
+                    0xff0d | 0xff8d => Key::Return,
+                    0xff08 => Key::Backspace,
+                    0xff52 => Key::Up,
+                    0xff54 => Key::Down,
+                    _ => Key::Other,
+                };
+                let text = if modifiers.intersects(KeyButMask::CONTROL | KeyButMask::MOD1) {
+                    None
+                } else {
+                    let codepoint = match symbol {
+                        0x20..=0x7e | 0xa0..=0xff => Some(symbol),
+                        _ if symbol & 0xff000000 == 0x01000000 => Some(symbol & 0x00ffffff),
+                        _ => None,
+                    };
+                    codepoint
+                        .and_then(char::from_u32)
+                        .filter(|c| !c.is_control())
+                        .map(|c| c.to_string())
+                };
+                self.shell.handle_event(
+                    self.windows[index].surface,
+                    InputEvent::KeyInput { key, text },
+                );
+            }
         }
     }
 }

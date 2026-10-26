@@ -1,8 +1,6 @@
 use std::{
     collections::HashMap,
-    fs::File,
-    io::BufReader,
-    path::{Path, PathBuf},
+    path::Path,
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
@@ -465,124 +463,16 @@ fn load_named_icon(name: &str, target: u32) -> Option<TrayIcon> {
     if name.is_empty() || Path::new(name).components().count() != 1 {
         return None;
     }
-    let mut roots = std::env::var_os("XDG_DATA_HOME")
-        .map(PathBuf::from)
-        .into_iter()
-        .map(|path| path.join("icons"))
-        .collect::<Vec<_>>();
-    let data_dirs = std::env::var_os("XDG_DATA_DIRS")
-        .map(|value| std::env::split_paths(&value).collect::<Vec<_>>())
-        .unwrap_or_else(|| {
-            vec![
-                PathBuf::from("/usr/local/share"),
-                PathBuf::from("/usr/share"),
-            ]
-        });
-    for dir in data_dirs {
-        roots.push(dir.join("icons"));
-        roots.push(dir.join("pixmaps"));
-    }
-    load_named_icon_in_roots(name, target, roots)
-}
-
-fn load_named_icon_in_roots(name: &str, target: u32, roots: Vec<PathBuf>) -> Option<TrayIcon> {
-    let sizes = [
-        target.to_string(),
-        "16x16".into(),
-        "22x22".into(),
-        "24x24".into(),
-        "32x32".into(),
-        "scalable".into(),
-    ];
-    let contexts = ["apps", "status", "actions", "devices", "places"];
-    let files = [format!("{name}.png"), format!("{name}.svg")];
-    for root in roots {
-        for theme in ["hicolor", "Adwaita", "Papirus", "breeze"] {
-            for size in &sizes {
-                for context in contexts {
-                    let directory = root.join(theme).join(size).join(context);
-                    for file in &files {
-                        if let Some(icon) = load_icon_file(&directory.join(file), target) {
-                            return Some(icon);
-                        }
-                    }
-                }
-            }
-        }
-        for file in &files {
-            if let Some(icon) = load_icon_file(&root.join(file), target) {
-                return Some(icon);
-            }
-        }
-    }
-    None
-}
-
-fn load_icon_file(path: &Path, target: u32) -> Option<TrayIcon> {
-    if path.extension().is_some_and(|extension| extension == "svg") {
-        load_svg_icon(path, target)
-    } else {
-        load_png_icon(path)
-    }
-}
-
-fn load_svg_icon(path: &Path, target: u32) -> Option<TrayIcon> {
-    let data = std::fs::read(path).ok()?;
-    let tree = resvg::usvg::Tree::from_data(&data, &resvg::usvg::Options::default()).ok()?;
-    let mut pixmap = tiny_skia::Pixmap::new(target, target)?;
-    let size = tree.size();
-    let scale = (target as f32 / size.width()).min(target as f32 / size.height());
-    resvg::render(
-        &tree,
-        tiny_skia::Transform::from_scale(scale, scale),
-        &mut pixmap.as_mut(),
-    );
-    Some(TrayIcon {
-        width: target,
-        height: target,
-        pixels: pixmap.data().to_vec(),
-    })
-}
-
-fn load_png_icon(path: &Path) -> Option<TrayIcon> {
-    let decoder = png::Decoder::new(BufReader::new(File::open(path).ok()?));
-    let mut reader = decoder.read_info().ok()?;
-    let mut bytes = vec![0; reader.output_buffer_size()?];
-    let info = reader.next_frame(&mut bytes).ok()?;
-    let rgba = match info.color_type {
-        png::ColorType::Rgba => bytes[..info.buffer_size()].to_vec(),
-        png::ColorType::Rgb => bytes[..info.buffer_size()]
-            .as_chunks::<3>()
-            .0
-            .iter()
-            .flat_map(|px| [px[0], px[1], px[2], 255])
-            .collect(),
-        _ => return None,
-    };
-    let pixels = rgba
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .flat_map(|px| {
-            let alpha = px[3] as u16;
-            [
-                ((px[0] as u16 * alpha) / 255) as u8,
-                ((px[1] as u16 * alpha) / 255) as u8,
-                ((px[2] as u16 * alpha) / 255) as u8,
-                px[3],
-            ]
-        })
-        .collect();
-    Some(TrayIcon {
-        width: info.width,
-        height: info.height,
-        pixels,
-    })
+    desktop_icons::Loader::new(["hicolor", "Adwaita", "Papirus", "breeze"]).load(
+        name,
+        target,
+        desktop_icons::RasterSize::Original,
+    )
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{choose_icon, load_named_icon_in_roots, load_svg_icon};
+    use super::choose_icon;
 
     #[test]
     fn rejects_empty_and_malformed_pixmaps() {
@@ -604,42 +494,5 @@ mod tests {
         .expect("valid icon");
         assert_eq!((icon.width, icon.height), (16, 16));
         assert_eq!(icon.pixels[..4], [128, 32, 16, 128]);
-    }
-
-    #[test]
-    fn renders_svg_icon_as_premultiplied_rgba() {
-        let directory = tempfile::tempdir().expect("temporary directory");
-        let path = directory.path().join("icon.svg");
-        std::fs::write(
-            &path,
-            r##"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><rect width="16" height="16" fill="#ff0000" fill-opacity="0.5"/></svg>"##,
-        )
-        .expect("SVG fixture");
-
-        let icon = load_svg_icon(&path, 16).expect("rendered icon");
-        assert_eq!((icon.width, icon.height), (16, 16));
-        assert_eq!(icon.pixels.len(), 16 * 16 * 4);
-        assert_eq!(icon.pixels[..4], [128, 0, 0, 128]);
-    }
-
-    #[test]
-    fn finds_svg_icon_in_hicolor_theme() {
-        let directory = tempfile::tempdir().expect("temporary directory");
-        let icon_dir = directory.path().join("hicolor/scalable/apps");
-        std::fs::create_dir_all(&icon_dir).expect("icon directory");
-        std::fs::write(
-            icon_dir.join("fcitx_mozc_hiragana.svg"),
-            r##"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><rect width="16" height="16" fill="#ff0000"/></svg>"##,
-        )
-        .expect("SVG fixture");
-
-        let icon = load_named_icon_in_roots(
-            "fcitx_mozc_hiragana",
-            16,
-            vec![directory.path().to_path_buf()],
-        )
-        .expect("named SVG icon");
-        assert_eq!((icon.width, icon.height), (16, 16));
-        assert_eq!(icon.pixels[..4], [255, 0, 0, 255]);
     }
 }

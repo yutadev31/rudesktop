@@ -1,6 +1,6 @@
 use std::{
     error::Error,
-    os::fd::AsFd,
+    os::fd::{AsFd, AsRawFd},
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -16,15 +16,24 @@ use wayland_client::{
     },
 };
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
+use xkbcommon::xkb;
 
 use super::{
-    Anchors, Backend, InputEvent, KeyboardInteractivity, Layer, MouseButton, OutputSelection,
+    Anchors, Backend, InputEvent, Key, KeyboardInteractivity, Layer, MouseButton, OutputSelection,
     PositionF64, Shell, Size, SurfaceConfig, SurfaceId,
 };
 
 const WIDTH_FALLBACK: u32 = 1280;
 const HEIGHT_FALLBACK: u32 = 1;
 const REDRAW_INTERVAL: Duration = Duration::from_millis(16);
+const DEFAULT_REPEAT_DELAY: Duration = Duration::from_millis(600);
+const DEFAULT_REPEAT_INTERVAL: Duration = Duration::from_millis(40);
+
+struct RepeatingKey {
+    keycode: u32,
+    surface: usize,
+    next: Instant,
+}
 
 /// Wayland layer-shell backend for panels, notifications, launchers and other
 /// compositor-managed GUI surfaces.
@@ -139,7 +148,32 @@ impl Backend for WaylandBackend {
         state.draw_pending(&qh, shell)?;
 
         while !state.closed && !shell.should_close() {
-            event_queue.blocking_dispatch(&mut state)?;
+            event_queue.dispatch_pending(&mut state)?;
+            connection.flush()?;
+            if let Some(guard) = event_queue.prepare_read() {
+                let mut fd = libc::pollfd {
+                    fd: connection.backend().poll_fd().as_raw_fd(),
+                    events: libc::POLLIN,
+                    revents: 0,
+                };
+                // A bounded wait lets external controllers close a visible surface.
+                let timeout = state
+                    .repeating_key
+                    .as_ref()
+                    .map(|repeat| repeat.next.saturating_duration_since(Instant::now()))
+                    .map(|remaining| remaining.as_millis().clamp(1, 50) as i32)
+                    .unwrap_or(50);
+                let ready = unsafe { libc::poll(&mut fd, 1, timeout) };
+                if ready > 0 {
+                    guard.read()?;
+                    event_queue.dispatch_pending(&mut state)?;
+                } else if ready < 0
+                    && std::io::Error::last_os_error().kind() != std::io::ErrorKind::Interrupted
+                {
+                    return Err(std::io::Error::last_os_error().into());
+                }
+            }
+            state.repeat_key();
             if shell.take_redraw_request() {
                 state.mark_all_for_redraw();
             }
@@ -256,6 +290,10 @@ struct State {
     pointer_position: PositionF64,
     keyboard_surface: Option<usize>,
     pending_events: Vec<PendingEvent>,
+    key_state: Option<xkb::State>,
+    repeat_delay: Duration,
+    repeat_interval: Option<Duration>,
+    repeating_key: Option<RepeatingKey>,
     closed: bool,
 }
 
@@ -322,6 +360,10 @@ impl State {
             pointer_position: PositionF64::default(),
             keyboard_surface: None,
             pending_events: Vec::new(),
+            key_state: None,
+            repeat_delay: DEFAULT_REPEAT_DELAY,
+            repeat_interval: Some(DEFAULT_REPEAT_INTERVAL),
+            repeating_key: None,
             closed: false,
         }
     }
@@ -330,6 +372,46 @@ impl State {
         for surface in &mut self.surfaces {
             surface.needs_redraw = true;
         }
+    }
+
+    fn queue_key_input(&mut self, surface: usize, keycode: u32) {
+        let Some(key_state) = &self.key_state else {
+            return;
+        };
+        let code = xkb::Keycode::new(keycode + 8);
+        let symbol = key_state.key_get_one_sym(code).raw();
+        let text = key_state.key_get_utf8(code);
+        self.pending_events.push(PendingEvent {
+            surface: self.surfaces[surface].logical_surface,
+            event: InputEvent::KeyInput {
+                key: match symbol {
+                    xkb::keysyms::KEY_Escape => Key::Escape,
+                    xkb::keysyms::KEY_Return | xkb::keysyms::KEY_KP_Enter => Key::Return,
+                    xkb::keysyms::KEY_BackSpace => Key::Backspace,
+                    xkb::keysyms::KEY_Up => Key::Up,
+                    xkb::keysyms::KEY_Down => Key::Down,
+                    _ => Key::Other,
+                },
+                text: (!text.is_empty() && !text.chars().any(char::is_control)).then_some(text),
+            },
+        });
+    }
+
+    fn repeat_key(&mut self) {
+        let Some(interval) = self.repeat_interval else {
+            self.repeating_key = None;
+            return;
+        };
+        let Some(repeat) = &mut self.repeating_key else {
+            return;
+        };
+        if Instant::now() < repeat.next {
+            return;
+        }
+        let keycode = repeat.keycode;
+        let surface = repeat.surface;
+        repeat.next = Instant::now() + interval;
+        self.queue_key_input(surface, keycode);
     }
 
     fn draw_pending(
@@ -624,10 +706,41 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for State {
         _qh: &QueueHandle<Self>,
     ) {
         match event {
+            wl_keyboard::Event::Keymap { format, fd, size } => {
+                state.repeating_key = None;
+                if format.into_result().ok() == Some(wl_keyboard::KeymapFormat::XkbV1) {
+                    let context = xkb::Context::new(xkb::CONTEXT_NO_FLAGS);
+                    match unsafe {
+                        xkb::Keymap::new_from_fd(
+                            &context,
+                            fd,
+                            size as usize,
+                            xkb::KEYMAP_FORMAT_TEXT_V1,
+                            xkb::KEYMAP_COMPILE_NO_FLAGS,
+                        )
+                    } {
+                        Ok(Some(keymap)) => state.key_state = Some(xkb::State::new(&keymap)),
+                        _ => state.key_state = None,
+                    }
+                }
+            }
+            wl_keyboard::Event::Modifiers {
+                mods_depressed,
+                mods_latched,
+                mods_locked,
+                group,
+                ..
+            } => {
+                if let Some(key_state) = &mut state.key_state {
+                    key_state.update_mask(mods_depressed, mods_latched, mods_locked, 0, 0, group);
+                }
+            }
             wl_keyboard::Event::Enter { surface, .. } => {
+                state.repeating_key = None;
                 state.keyboard_surface = state.surface_index(&surface);
             }
             wl_keyboard::Event::Leave { surface, .. } => {
+                state.repeating_key = None;
                 if let Some(index) = state.surface_index(&surface) {
                     state.pending_events.push(PendingEvent {
                         surface: state.surfaces[index].logical_surface,
@@ -636,20 +749,50 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for State {
                 }
                 state.keyboard_surface = None;
             }
+            wl_keyboard::Event::RepeatInfo { rate, delay } => {
+                state.repeat_interval = (rate > 0).then(|| {
+                    Duration::from_secs_f64(1.0 / f64::from(rate)).max(Duration::from_millis(1))
+                });
+                state.repeat_delay = Duration::from_millis(delay.max(0) as u64);
+                state.repeating_key = None;
+            }
             wl_keyboard::Event::Key {
                 key,
                 state: key_state,
                 ..
             } => {
                 if let Some(index) = state.keyboard_surface {
+                    let pressed =
+                        key_state.into_result().ok() == Some(wl_keyboard::KeyState::Pressed);
                     state.pending_events.push(PendingEvent {
                         surface: state.surfaces[index].logical_surface,
                         event: InputEvent::Key {
                             keycode: key,
-                            pressed: key_state.into_result().ok()
-                                == Some(wl_keyboard::KeyState::Pressed),
+                            pressed,
                         },
                     });
+                    if pressed {
+                        state.queue_key_input(index, key);
+                        if state.repeat_interval.is_some()
+                            && state.key_state.as_ref().is_some_and(|key_state| {
+                                key_state
+                                    .get_keymap()
+                                    .key_repeats(xkb::Keycode::new(key + 8))
+                            })
+                        {
+                            state.repeating_key = Some(RepeatingKey {
+                                keycode: key,
+                                surface: index,
+                                next: Instant::now() + state.repeat_delay,
+                            });
+                        }
+                    } else if state
+                        .repeating_key
+                        .as_ref()
+                        .is_some_and(|repeat| repeat.keycode == key && repeat.surface == index)
+                    {
+                        state.repeating_key = None;
+                    }
                 }
             }
             _ => {}
