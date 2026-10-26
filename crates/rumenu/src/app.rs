@@ -101,14 +101,22 @@ impl App {
         }
     }
 
-    fn move_selection(&mut self, down: bool) {
+    fn move_selection(&mut self, down: bool, wrap: bool) {
         if self.filtered.is_empty() {
             return;
         }
         if down {
-            self.selected = (self.selected + 1).min(self.filtered.len() - 1);
+            self.selected = if wrap && self.selected + 1 == self.filtered.len() {
+                0
+            } else {
+                (self.selected + 1).min(self.filtered.len() - 1)
+            };
         } else {
-            self.selected = self.selected.saturating_sub(1);
+            self.selected = if wrap && self.selected == 0 {
+                self.filtered.len() - 1
+            } else {
+                self.selected.saturating_sub(1)
+            };
         }
         if self.selected < self.scroll {
             self.scroll = self.selected;
@@ -166,8 +174,8 @@ impl Shell for App {
                 self.error = None;
                 self.refilter();
             }
-            InputEvent::KeyInput { key: Key::Up, .. } => self.move_selection(false),
-            InputEvent::KeyInput { key: Key::Down, .. } => self.move_selection(true),
+            InputEvent::KeyInput { key: Key::Up, .. } => self.move_selection(false, true),
+            InputEvent::KeyInput { key: Key::Down, .. } => self.move_selection(true, true),
             InputEvent::KeyInput {
                 text: Some(text), ..
             } => {
@@ -190,7 +198,7 @@ impl Shell for App {
                     }
                 }
             }
-            InputEvent::PointerScroll { delta_y, .. } => self.move_selection(delta_y > 0.0),
+            InputEvent::PointerScroll { delta_y, .. } => self.move_selection(delta_y > 0.0, false),
             _ => {}
         }
     }
