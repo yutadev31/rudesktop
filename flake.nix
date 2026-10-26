@@ -46,6 +46,13 @@
           wayland
         ];
 
+        ruwmRuntimeLibraries = with pkgs; [
+          libGL
+          libx11
+          libxcursor
+          libxi
+        ];
+
         lockfile = builtins.fromTOML (builtins.readFile ./Cargo.lock);
         cpstPackage = builtins.head (builtins.filter (package: package.name == "cpst") lockfile.package);
         rubarPackage = builtins.head (builtins.filter (package: package.name == "rubar") lockfile.package);
@@ -132,7 +139,14 @@
             "ruwm"
           ];
 
-          inherit nativeBuildInputs buildInputs;
+          nativeBuildInputs = nativeBuildInputs ++ [ pkgs.makeWrapper ];
+          buildInputs = buildInputs ++ ruwmRuntimeLibraries;
+
+          postInstall = ''
+            wrapProgram $out/bin/ruwm --prefix LD_LIBRARY_PATH : ${
+              pkgs.lib.makeLibraryPath (buildInputs ++ ruwmRuntimeLibraries)
+            }
+          '';
         };
 
         shot = pkgs.rustPlatform.buildRustPackage {
@@ -167,8 +181,8 @@
 
         devShells.default = pkgs.mkShell {
           nativeBuildInputs = nativeBuildInputs ++ devTools;
-          inherit buildInputs;
-          LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath buildInputs;
+          buildInputs = buildInputs ++ ruwmRuntimeLibraries;
+          LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath (buildInputs ++ ruwmRuntimeLibraries);
         };
       }
     );

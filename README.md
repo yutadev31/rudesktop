@@ -39,7 +39,7 @@ nix build .#rubar
 nix build .#rumenu
 ```
 
-The default Nix package is `rubar`. When building outside Nix on Linux, install a recent Rust toolchain, `pkg-config`, and development libraries for PulseAudio, XCB, Wayland, and xkbcommon. Desktop applications need a compatible graphical session to run. See each application's README for setup, configuration, and platform requirements.
+The default Nix package is `rubar`. When building outside Nix on Linux, install a recent Rust toolchain, `pkg-config`, and development libraries for PulseAudio, XCB, Wayland, and xkbcommon. The `ruwm` winit backend also needs EGL and OpenGL at runtime. Desktop applications need a compatible graphical session to run. See each application's README for setup, configuration, and platform requirements.
 
 ## Development
 

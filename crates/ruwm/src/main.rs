@@ -1,7 +1,9 @@
 use std::{error::Error, io, sync::Arc};
 
+mod winit;
+
 use smithay::{
-    delegate_compositor,
+    delegate_compositor, delegate_output,
     reexports::{
         calloop::{EventLoop, Interest, Mode, PostAction, generic::Generic},
         wayland_server::{
@@ -12,9 +14,12 @@ use smithay::{
     },
     wayland::{
         compositor::{CompositorClientState, CompositorHandler, CompositorState},
+        output::OutputHandler,
         socket::ListeningSocketSource,
     },
 };
+
+use crate::winit::WinitBackend;
 
 struct Ruwm {
     compositor_state: CompositorState,
@@ -33,11 +38,15 @@ impl CompositorHandler for Ruwm {
     }
 
     fn commit(&mut self, _surface: &WlSurface) {
-        // Rendering and surface management will be added with an output backend.
+        // Client surfaces will be rendered when shell and surface management are added.
     }
 }
 
 delegate_compositor!(Ruwm);
+
+impl OutputHandler for Ruwm {}
+
+delegate_output!(Ruwm);
 
 #[derive(Default)]
 struct RuwmClientState {
@@ -53,6 +62,7 @@ impl ClientData for RuwmClientState {
 struct LoopData {
     compositor: Ruwm,
     display_handle: DisplayHandle,
+    backend: WinitBackend,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -62,6 +72,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let compositor = Ruwm {
         compositor_state: CompositorState::new::<Ruwm>(&display_handle),
     };
+    let (backend, winit_events) = WinitBackend::new(&display_handle)?;
 
     let socket = ListeningSocketSource::new_auto()?;
     let socket_name = socket.socket_name().to_os_string();
@@ -87,14 +98,23 @@ fn main() -> Result<(), Box<dyn Error>> {
         },
     )?;
 
+    loop_handle.insert_source(winit_events, |event, _, data| {
+        data.backend.handle_event(event);
+    })?;
+
     let mut data = LoopData {
         compositor,
         display_handle,
+        backend,
     };
     eprintln!("ruwm: listening on {}", socket_name.to_string_lossy());
 
-    loop {
+    while !data.backend.is_closed() {
+        data.backend.render_if_needed()?;
         event_loop.dispatch(None, &mut data)?;
+        data.backend.cleanup_output();
         data.display_handle.flush_clients()?;
     }
+
+    Ok(())
 }
