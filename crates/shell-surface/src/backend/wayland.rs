@@ -166,6 +166,7 @@ impl Backend for WaylandBackend {
                 let ready = unsafe { libc::poll(&mut fd, 1, timeout) };
                 if ready > 0 {
                     guard.read()?;
+                    event_queue.dispatch_pending(&mut state)?;
                 } else if ready < 0
                     && std::io::Error::last_os_error().kind() != std::io::ErrorKind::Interrupted
                 {

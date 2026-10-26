@@ -56,14 +56,35 @@ fn visit(
     entries: &mut Vec<Entry>,
     terminal_available: bool,
 ) {
-    let Ok(read_dir) = fs::read_dir(dir) else {
-        return;
+    let read_dir = match fs::read_dir(dir) {
+        Ok(read_dir) => read_dir,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return,
+        Err(error) => {
+            tracing::warn!(path = %dir.display(), %error, "failed to read application directory");
+            return;
+        }
     };
-    for item in read_dir.flatten() {
+    for item in read_dir {
+        let item = match item {
+            Ok(item) => item,
+            Err(error) => {
+                tracing::warn!(path = %dir.display(), %error, "failed to read application directory entry");
+                continue;
+            }
+        };
         let path = item.path();
-        if path.is_dir() {
+        let file_type = match item.file_type() {
+            Ok(file_type) => file_type,
+            Err(error) => {
+                tracing::warn!(path = %path.display(), %error, "failed to read application entry type");
+                continue;
+            }
+        };
+        if file_type.is_dir() {
             visit(root, &path, seen, entries, terminal_available);
-        } else if path.extension().is_some_and(|ext| ext == "desktop") {
+        } else if (file_type.is_file() || file_type.is_symlink())
+            && path.extension().is_some_and(|ext| ext == "desktop")
+        {
             let Ok(relative) = path.strip_prefix(root) else {
                 continue;
             };
@@ -228,7 +249,12 @@ pub fn launch(entry: &Entry, terminal: &[String]) -> Result<(), Box<dyn Error>> 
     if let Some(dir) = &entry.working_dir {
         command.current_dir(dir);
     }
-    command.spawn()?;
+    let mut child = command.spawn()?;
+    std::thread::spawn(move || {
+        if let Err(error) = child.wait() {
+            tracing::warn!(%error, "failed to reap launched application");
+        }
+    });
     Ok(())
 }
 
@@ -297,6 +323,7 @@ fn tokenize(value: &str) -> Result<Vec<String>, Box<dyn Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::fs::symlink;
     use tempfile::tempdir;
 
     fn desktop(path: &Path, body: &str) {
@@ -346,6 +373,28 @@ mod tests {
         visit(&user, &user, &mut seen, &mut entries, false);
         visit(&system, &system, &mut seen, &mut entries, false);
         assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn visits_desktop_symlinks_without_following_directory_symlinks() {
+        let directory = tempdir().unwrap();
+        let root = directory.path().join("applications");
+        let external = directory.path().join("external");
+        desktop(&external.join("example.desktop"), "");
+        fs::create_dir(&root).unwrap();
+        symlink(
+            external.join("example.desktop"),
+            root.join("linked.desktop"),
+        )
+        .unwrap();
+        symlink(&external, root.join("linked-directory")).unwrap();
+
+        let mut seen = HashSet::new();
+        let mut entries = Vec::new();
+        visit(&root, &root, &mut seen, &mut entries, false);
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].path, root.join("linked.desktop"));
     }
 
     #[test]

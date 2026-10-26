@@ -123,8 +123,16 @@ impl Renderer {
                 );
             }
             if let Some(icon) = &entry.icon {
-                if !self.icons.contains_key(icon) && self.pending_icons.insert(icon.clone()) {
-                    self.icon_requests.send(icon.clone())?;
+                if !self.icons.contains_key(icon)
+                    && self.pending_icons.insert(icon.clone())
+                    && self.icon_requests.send(icon.clone()).is_err()
+                {
+                    if !self.icon_worker_failed {
+                        tracing::error!("icon loader stopped before accepting requests");
+                        self.icon_worker_failed = true;
+                    }
+                    self.pending_icons.remove(icon);
+                    self.icons.insert(icon.clone(), None);
                 }
                 if let Some(Some(pixels)) = self.icons.get(icon) {
                     draw_icon(&mut pixmap, pixels, 22, y + 5);

@@ -401,12 +401,13 @@ impl State<'_> {
                 let text = if modifiers.intersects(KeyButMask::CONTROL | KeyButMask::MOD1) {
                     None
                 } else {
-                    let codepoint = if symbol & 0xff000000 == 0x01000000 {
-                        symbol & 0x00ffffff
-                    } else {
-                        symbol
+                    let codepoint = match symbol {
+                        0x20..=0x7e | 0xa0..=0xff => Some(symbol),
+                        _ if symbol & 0xff000000 == 0x01000000 => Some(symbol & 0x00ffffff),
+                        _ => None,
                     };
-                    char::from_u32(codepoint)
+                    codepoint
+                        .and_then(char::from_u32)
                         .filter(|c| !c.is_control())
                         .map(|c| c.to_string())
                 };
