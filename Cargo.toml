@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/cpst", "crates/rubar", "crates/shell-surface", "crates/shot"]
+members = ["crates/cpst", "crates/rubar", "crates/rumenu", "crates/shell-surface", "crates/shot"]
 
 [workspace.package]
 version = "0.5.0"
@@ -24,6 +24,7 @@ crossterm = "0.29"
 dirs = "7"
 image = { version = "0.25", default-features = false, features = ["png"] }
 libpulse-binding = "2.30"
+libc = "0.2"
 memmap2 = "0.9"
 png = "0.18"
 resvg = "0.48.1"
@@ -42,6 +43,7 @@ wayland-client = "0.31"
 wayland-protocols-wlr = { version = "0.3", features = ["client"] }
 windows-sys = "0.61"
 x11rb = { version = "0.14", features = ["allow-unsafe-code"] }
+xkbcommon = { version = "0.8", features = ["wayland"] }
 zbus = {
   version = "5",
   default-features = false,
