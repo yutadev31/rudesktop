@@ -7,6 +7,8 @@ use cosmic_text::{
 use tiny_skia::{Color, Paint, Pixmap, Rect, Transform};
 use unicode_segmentation::UnicodeSegmentation;
 
+pub use desktop_icons::Icon as RenderIcon;
+
 use crate::{
     color::parse_rgba,
     config::{Config, StyleConfig},
@@ -49,13 +51,6 @@ pub struct RenderButton {
     pub color: Option<[u8; 4]>,
     pub background: Option<[u8; 4]>,
     pub indicator: Option<([u8; 4], u32, bool)>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct RenderIcon {
-    pub width: u32,
-    pub height: u32,
-    pub pixels: Vec<u8>,
 }
 
 pub trait RenderWidget {
