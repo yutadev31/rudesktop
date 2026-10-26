@@ -2,7 +2,7 @@
 
 A small desktop application launcher for X11 and Wayland compositors supporting `wlr-layer-shell`.
 
-Run `rumenu` once in your session. It remains hidden until `rumenu toggle` is called. Bind `rumenu toggle` to a compositor or window manager shortcut. Escape closes the launcher, Enter launches the selected app, and the arrow keys select a result. Click a result to launch it.
+Run `rumenu` once in your session. It remains hidden until `rumenu toggle` is called. Bind `rumenu toggle` to a compositor or window manager shortcut. Escape closes the launcher, Enter launches the selected app, and the arrow keys select a result. Hold a key to repeat text entry, deletion, or selection movement at the keyboard's configured rate. Click a result to launch it.
 
 rumenu reads desktop entries from the XDG applications directories. Search matches application names, descriptions, and keywords. Terminal applications appear only when a terminal command is configured.
 
