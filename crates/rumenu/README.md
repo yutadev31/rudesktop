@@ -23,3 +23,7 @@ muted = "#9aa5ce"
 ```
 
 The daemon and `toggle` command communicate through a per-display socket in `$XDG_RUNTIME_DIR`.
+
+## Supported platforms
+
+`rumenu` currently supports Linux and FreeBSD. The long-term goal is to support platforms that run X11 or Wayland, including Linux, the BSD family, illumos, and GNU Hurd.
