@@ -49,7 +49,10 @@
         lockfile = builtins.fromTOML (builtins.readFile ./Cargo.lock);
         cpstPackage = builtins.head (builtins.filter (package: package.name == "cpst") lockfile.package);
         rubarPackage = builtins.head (builtins.filter (package: package.name == "rubar") lockfile.package);
-        rumenuPackage = builtins.head (builtins.filter (package: package.name == "rumenu") lockfile.package);
+        rumenuPackage = builtins.head (
+          builtins.filter (package: package.name == "rumenu") lockfile.package
+        );
+        ruwmPackage = builtins.head (builtins.filter (package: package.name == "ruwm") lockfile.package);
         shotPackage = builtins.head (builtins.filter (package: package.name == "shot") lockfile.package);
 
         cpst = pkgs.rustPlatform.buildRustPackage {
@@ -102,8 +105,32 @@
           src = ./.;
 
           cargoLock.lockFile = ./Cargo.lock;
-          cargoBuildFlags = [ "--package" "rumenu" ];
-          cargoTestFlags = [ "--package" "rumenu" ];
+          cargoBuildFlags = [
+            "--package"
+            "rumenu"
+          ];
+          cargoTestFlags = [
+            "--package"
+            "rumenu"
+          ];
+
+          inherit nativeBuildInputs buildInputs;
+        };
+
+        ruwm = pkgs.rustPlatform.buildRustPackage {
+          pname = "ruwm";
+          version = ruwmPackage.version;
+          src = ./.;
+
+          cargoLock.lockFile = ./Cargo.lock;
+          cargoBuildFlags = [
+            "--package"
+            "ruwm"
+          ];
+          cargoTestFlags = [
+            "--package"
+            "ruwm"
+          ];
 
           inherit nativeBuildInputs buildInputs;
         };
@@ -128,7 +155,13 @@
       in
       {
         packages = {
-          inherit cpst rubar rumenu shot;
+          inherit
+            cpst
+            rubar
+            rumenu
+            ruwm
+            shot
+            ;
           default = rubar;
         };
 

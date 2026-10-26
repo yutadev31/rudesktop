@@ -1,0 +1,9 @@
+[package]
+name = "ruwm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "A minimal Wayland compositor template built with Smithay"
+
+[dependencies]
+smithay.workspace = true

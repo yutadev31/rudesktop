@@ -8,6 +8,7 @@ All software in this repository is currently in beta.
 | --- | --- |
 | [`rubar`](crates/rubar/README.md) | Configurable status bar for Wayland and X11. |
 | [`rumenu`](crates/rumenu/README.md) | Application launcher for X11 and Wayland compositors with `wlr-layer-shell`. |
+| [`ruwm`](crates/ruwm/README.md) | Minimal Smithay Wayland compositor template. |
 | [`shot`](crates/shot/README.md) | Monitor screenshots saved as PNG and copied to the clipboard. |
 | [`cpst`](crates/cpst/README.md) | Clipboard commands: `cpy` copies input and `pst` pastes clipboard contents. |
 | [`shell-surface`](crates/shell-surface/) | Shared Wayland and X11 surface and input abstraction. |
@@ -27,10 +28,11 @@ Run an application from the repository root:
 ```sh
 cargo run -p rubar
 cargo run -p rumenu
+cargo run -p ruwm
 cargo run -p shot -- --help
 ```
 
-The Nix flake provides packages for `cpst`, `rubar`, `rumenu`, and `shot`. For example:
+The Nix flake provides packages for `cpst`, `rubar`, `rumenu`, `ruwm`, and `shot`. For example:
 
 ```sh
 nix build .#rubar
