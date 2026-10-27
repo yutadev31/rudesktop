@@ -28,11 +28,11 @@ cargo build --release
 
 The Nix flake also exposes a `rubar` package, which you can run with `nix run .`.
 
-When building outside Nix, install a recent Rust toolchain, `pkg-config`, and development libraries for PulseAudio, XCB, and Wayland. Run `rubar` inside a Wayland or X11 session.
+When building outside Nix, install a recent Rust toolchain, `pkg-config`, and development libraries for PulseAudio, Wayland, and xkbcommon. Run `rubar` inside a Wayland or X11 session.
 
 ### FreeBSD
 
-Build with Cargo after installing the Rust toolchain, `pkgconf`, and the PulseAudio, XCB, and Wayland libraries:
+Build with Cargo after installing the Rust toolchain, `pkgconf`, and the PulseAudio, Wayland, and xkbcommon libraries:
 
 ```sh
 cargo build --release

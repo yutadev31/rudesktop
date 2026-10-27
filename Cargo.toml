@@ -42,7 +42,7 @@ unicode-segmentation = "1"
 wayland-client = "0.31"
 wayland-protocols-wlr = { version = "0.3", features = ["client"] }
 windows-sys = "0.61"
-x11rb = { version = "0.14", features = ["allow-unsafe-code"] }
+x11rb = "0.14"
 xkbcommon = { version = "0.9", features = ["wayland"] }
 zbus = {
   version = "5",
