@@ -232,9 +232,100 @@ fn render_workspaces(state: &WorkspaceState, monitor_name: Option<&str>) -> Vec<
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
 
     use super::{RenderedWorkspace, WorkspaceState, render_workspaces};
-    use crate::provider::wm::Workspace;
+    use crate::{
+        config::WorkspaceConfig,
+        provider::wm::{WmClient, Workspace},
+        widget::{MouseButton, Widget},
+    };
+
+    type Switch = (i64, Option<String>, Option<i64>);
+
+    struct MockClient {
+        state: WorkspaceState,
+        switches: Mutex<Vec<Switch>>,
+    }
+
+    impl WmClient for MockClient {
+        fn state(&self) -> Option<WorkspaceState> {
+            Some(self.state.clone())
+        }
+
+        fn switch_to(
+            &self,
+            id: i64,
+            monitor: Option<&str>,
+            local_index: Option<i64>,
+        ) -> Result<(), String> {
+            self.switches
+                .lock()
+                .unwrap()
+                .push((id, monitor.map(str::to_owned), local_index));
+            Ok(())
+        }
+
+        fn title(&self) -> Option<String> {
+            None
+        }
+    }
+
+    #[test]
+    fn clicks_target_the_workspace_rendered_on_each_monitor() {
+        let client = Arc::new(MockClient {
+            state: WorkspaceState {
+                workspaces: vec![
+                    Workspace {
+                        id: 1,
+                        name: "1".into(),
+                        monitor_id: 0,
+                        monitor: "DP-1".into(),
+                        urgent: false,
+                        active: true,
+                    },
+                    Workspace {
+                        id: 11,
+                        name: "1".into(),
+                        monitor_id: 1,
+                        monitor: "HDMI-A-1".into(),
+                        urgent: false,
+                        active: false,
+                    },
+                    Workspace {
+                        id: 12,
+                        name: "2".into(),
+                        monitor_id: 1,
+                        monitor: "HDMI-A-1".into(),
+                        urgent: false,
+                        active: true,
+                    },
+                ],
+                active_id: 1,
+                active_monitor_id: 0,
+                active_ids: HashMap::from([("DP-1".into(), 1), ("HDMI-A-1".into(), 12)]),
+            },
+            switches: Mutex::new(Vec::new()),
+        });
+        let mut widget = super::Workspace::new(&WorkspaceConfig::default(), client.clone());
+        assert!(widget.poll_changed());
+        widget.set_monitor_name(Some("DP-1"));
+        widget.content();
+        widget.set_monitor_name(Some("HDMI-A-1"));
+        widget.content();
+        widget.on_click(MouseButton::Right, 1);
+        widget.on_click(MouseButton::Left, 2);
+        widget.on_click(MouseButton::Left, 1);
+        widget.set_monitor_name(Some("DP-1"));
+        widget.on_click(MouseButton::Left, 0);
+        assert_eq!(
+            *client.switches.lock().unwrap(),
+            vec![
+                (12, Some("HDMI-A-1".into()), Some(2)),
+                (1, Some("DP-1".into()), Some(1)),
+            ]
+        );
+    }
 
     #[test]
     fn workspaces_are_rendered_with_active_workspace_marked() {

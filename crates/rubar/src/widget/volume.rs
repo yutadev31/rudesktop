@@ -277,7 +277,7 @@ fn format_volume(format: &str, muted_format: &str, percent: u8, muted: bool) -> 
 mod tests {
     use std::sync::mpsc;
 
-    use super::{ScrollDirection, Volume, VolumeAction, VolumeUpdate, Widget};
+    use super::{MouseButton, ScrollDirection, Volume, VolumeAction, VolumeUpdate, Widget};
     use crate::{
         config::VolumeConfig,
         provider::audio::{VolumeChannelState, VolumeState},
@@ -342,5 +342,75 @@ mod tests {
             .unwrap();
         assert!(!widget.poll_changed());
         assert_eq!(widget.state.unwrap().input.unwrap().percent, 45);
+    }
+
+    #[test]
+    fn both_channels_route_clicks_and_clamp_scroll_to_valid_percentages() {
+        let (commands, command_receiver) = mpsc::channel();
+        let (_state_sender, updates) = mpsc::channel();
+        let config = VolumeConfig {
+            scroll_step: 10,
+            ..Default::default()
+        };
+        let mut widget = Volume {
+            commands,
+            updates,
+            format_out: config.format_out,
+            format_out_muted: config.format_out_muted,
+            format_in: config.format_in,
+            format_in_muted: config.format_in_muted,
+            scroll_step: config.scroll_step,
+            state: Some(VolumeState {
+                output: Some(VolumeChannelState {
+                    percent: 95,
+                    muted: false,
+                }),
+                input: Some(VolumeChannelState {
+                    percent: 5,
+                    muted: true,
+                }),
+            }),
+            visible_channels: Vec::new(),
+            revision: 0,
+        };
+        widget.content();
+
+        widget.on_click(MouseButton::Right, 0);
+        widget.on_click(MouseButton::Left, 2);
+        assert!(command_receiver.try_recv().is_err());
+
+        widget.on_click(MouseButton::Left, 0);
+        assert!(matches!(
+            command_receiver.try_recv().unwrap().action,
+            VolumeAction::SetMuted {
+                input: false,
+                muted: true
+            }
+        ));
+        widget.on_click(MouseButton::Left, 1);
+        assert!(matches!(
+            command_receiver.try_recv().unwrap().action,
+            VolumeAction::SetMuted {
+                input: true,
+                muted: false
+            }
+        ));
+
+        widget.on_scroll(ScrollDirection::Up, 0);
+        assert!(matches!(
+            command_receiver.try_recv().unwrap().action,
+            VolumeAction::SetPercent {
+                input: false,
+                percent: 100
+            }
+        ));
+        widget.on_scroll(ScrollDirection::Down, 1);
+        assert!(matches!(
+            command_receiver.try_recv().unwrap().action,
+            VolumeAction::SetPercent {
+                input: true,
+                percent: 0
+            }
+        ));
     }
 }
