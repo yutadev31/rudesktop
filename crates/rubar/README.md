@@ -42,7 +42,7 @@ The `cpu`, `memory`, `process`, and `battery` widgets select FreeBSD providers a
 
 ### NetBSD
 
-On NetBSD 10 amd64, install a recent Rust toolchain, `pkgconf`, and development libraries for PulseAudio, XCB, Wayland, and xkbcommon from pkgsrc, then run `cargo build --release`. Run Rubar in a supported X11 or Wayland session. The volume widget requires a PulseAudio-compatible server and the tray requires a D-Bus session.
+On NetBSD 10 amd64, install a recent Rust toolchain, `pkgconf`, PulseAudio, Wayland, and xkbcommon from pkgsrc, then run `cargo build --release`. Run Rubar in a supported X11 or Wayland session. The volume widget requires a PulseAudio-compatible server and the tray requires a D-Bus session.
 
 The `cpu`, `memory`, `process`, and `battery` widgets select NetBSD providers automatically. CPU ticks, VM pages, and the process table come from `sysctl`; battery data comes from envsys through `/dev/sysmon` and `libprop`. Memory availability includes free and inactive pages. The battery widget combines the percentages of present batteries and is empty, with a diagnostic log entry, when no battery is present.
 

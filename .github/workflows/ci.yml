@@ -60,7 +60,7 @@ jobs:
         with:
           release: "10.1"
           prepare: |
-            /usr/sbin/pkg_add rust pkgconf pulseaudio libxcb libxkbcommon wayland fontconfig dejavu-ttf
+            /usr/sbin/pkg_add rust pkgconf pulseaudio libxkbcommon wayland fontconfig dejavu-ttf
           run: |
             export PATH="/usr/pkg/bin:$PATH"
             export PKG_CONFIG_PATH="/usr/pkg/lib/pkgconfig:/usr/pkg/share/pkgconfig"
