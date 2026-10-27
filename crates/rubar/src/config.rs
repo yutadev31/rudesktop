@@ -459,6 +459,8 @@ mod tests {
         assert!(Config::parse("[memory]\nprovider = 'linux'\n").is_ok());
         #[cfg(target_os = "freebsd")]
         assert!(Config::parse("[memory]\nprovider = 'freebsd'\n").is_ok());
+        #[cfg(target_os = "netbsd")]
+        assert!(Config::parse("[memory]\nprovider = 'netbsd'\n").is_ok());
 
         let error = Config::parse("[memory]\nprovider = 'unknown'\n")
             .unwrap_err()
@@ -495,6 +497,8 @@ mod tests {
         assert!(Config::parse("[cpu]\nprovider = 'linux'\n").is_ok());
         #[cfg(target_os = "freebsd")]
         assert!(Config::parse("[cpu]\nprovider = 'freebsd'\n").is_ok());
+        #[cfg(target_os = "netbsd")]
+        assert!(Config::parse("[cpu]\nprovider = 'netbsd'\n").is_ok());
     }
 
     #[test]
@@ -522,6 +526,8 @@ mod tests {
                 .to_string()
                 .contains("process.provider")
         );
+        #[cfg(target_os = "netbsd")]
+        assert!(Config::parse("[process]\nprovider = 'netbsd'\n").is_ok());
     }
 
     #[test]

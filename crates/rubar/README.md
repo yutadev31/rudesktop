@@ -2,13 +2,13 @@
 
 `rubar` is a configurable status bar for Wayland and X11, written in Rust. It creates a bar at the top of each output and supports workspaces, the focused window, a clock, battery, CPU and memory usage, process counts, audio volume, and a system tray.
 
-Workspace and window information is available through Hyprland, Sway, i3, niri, or MangoWM IPC. System metrics use native Linux or FreeBSD interfaces, audio uses PulseAudio, and tray icons use the StatusNotifierItem protocol.
+Workspace and window information is available through Hyprland, Sway, i3, niri, or MangoWM IPC. System metrics use native Linux, FreeBSD, or NetBSD interfaces, audio uses PulseAudio, and tray icons use the StatusNotifierItem protocol.
 
 On MangoWM, the `workspace` widget shows tags on each monitor and supports clicking a tag to view it. The `window` widget shows the focused client title. Run `rubar` within the MangoWM session so it inherits `MANGO_INSTANCE_SIGNATURE`.
 
 ## Supported platforms
 
-`rubar` currently supports Linux and FreeBSD. The long-term goal is to support platforms that run X11 or Wayland, including Linux, the BSD family, illumos, and GNU Hurd.
+`rubar` currently supports Linux, FreeBSD, and NetBSD 10 on amd64. The long-term goal is to support platforms that run X11 or Wayland, including the BSD family, illumos, and GNU Hurd.
 
 ## Build and run
 
@@ -40,6 +40,12 @@ cargo build --release
 
 The `cpu`, `memory`, `process`, and `battery` widgets select FreeBSD providers automatically. The battery provider reads the aggregate ACPI battery state; on systems without an ACPI battery, it reports the missing battery and leaves the widget empty. FreeBSD memory availability includes free and inactive pages. The volume widget requires a PulseAudio-compatible server, and the tray requires a D-Bus session. Workspace and window widgets require one of the supported window managers or compositors listed above.
 
+### NetBSD
+
+On NetBSD 10 amd64, install a recent Rust toolchain, `pkgconf`, and development libraries for PulseAudio, XCB, Wayland, and xkbcommon from pkgsrc, then run `cargo build --release`. Run Rubar in a supported X11 or Wayland session. The volume widget requires a PulseAudio-compatible server and the tray requires a D-Bus session.
+
+The `cpu`, `memory`, `process`, and `battery` widgets select NetBSD providers automatically. CPU ticks, VM pages, and the process table come from `sysctl`; battery data comes from envsys through `/dev/sysmon` and `libprop`. Memory availability includes free and inactive pages. The battery widget combines the percentages of present batteries and is empty, with a diagnostic log entry, when no battery is present.
+
 ## Configuration
 
 Create `~/.config/rubar/config.toml` (or `$XDG_CONFIG_HOME/rubar/config.toml` when `XDG_CONFIG_HOME` is set). For example:
@@ -68,13 +74,13 @@ The `left`, `center`, and `right` arrays set the widgets and their order. All th
 
 For existing configurations, rename `[modules]` to `[widgets]` and `style.module_spacing` to `style.widget_spacing`.
 
-The `process` widget shows the total number of processes. It counts PID entries in `/proc` on Linux and queries the process table on FreeBSD. On Linux, a procfs mount with `hidepid=2` (or another mode that hides PID directories) makes the widget unavailable and logs an error instead of displaying a partial count. Its default format is `{count} 󰒓`, refreshed every five seconds. For example:
+The `process` widget shows the total number of processes. It counts PID entries in `/proc` on Linux and queries the process table on FreeBSD and NetBSD. On Linux, a procfs mount with `hidepid=2` (or another mode that hides PID directories) makes the widget unavailable and logs an error instead of displaying a partial count. Its default format is `{count} 󰒓`, refreshed every five seconds. For example:
 
 ```toml
 [process]
 format = "Processes: {count}"
 refresh_seconds = 5
-# provider = "auto" # or "linux" / "freebsd" on the corresponding platform
+# provider = "auto" # or "linux" / "freebsd" / "netbsd" on the corresponding platform
 ```
 
 ## Development

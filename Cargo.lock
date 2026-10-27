@@ -1646,11 +1646,13 @@ dependencies = [
 name = "rubar"
 version = "0.6.0"
 dependencies = [
+ "cc",
  "chrono",
  "chrono-tz",
  "cosmic-text",
  "desktop-icons",
  "dirs",
+ "libc",
  "libpulse-binding",
  "serde",
  "serde_json",

@@ -2,6 +2,8 @@
 mod freebsd;
 #[cfg(target_os = "linux")]
 mod linux;
+#[cfg(any(target_os = "netbsd", test))]
+mod netbsd;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct MemoryState {
@@ -51,6 +53,8 @@ enum ProviderKind {
     FreeBsd,
     #[cfg(target_os = "linux")]
     Linux,
+    #[cfg(target_os = "netbsd")]
+    NetBsd,
 }
 
 impl ProviderKind {
@@ -61,6 +65,8 @@ impl ProviderKind {
             "freebsd" => Ok(Self::FreeBsd),
             #[cfg(target_os = "linux")]
             "linux" => Ok(Self::Linux),
+            #[cfg(target_os = "netbsd")]
+            "netbsd" => Ok(Self::NetBsd),
             _ => Err(format!("unknown memory provider `{name}`")),
         }
     }
@@ -77,6 +83,8 @@ pub fn create(name: &str) -> Result<Box<dyn MemoryProvider>, String> {
         ProviderKind::FreeBsd => Ok(Box::new(freebsd::VmStats)),
         #[cfg(target_os = "linux")]
         ProviderKind::Linux => Ok(Box::new(linux::ProcMeminfo::new("/proc/meminfo"))),
+        #[cfg(target_os = "netbsd")]
+        ProviderKind::NetBsd => Ok(Box::new(netbsd::UvmExp)),
     }
 }
 
@@ -85,7 +93,7 @@ fn create_auto() -> Result<Box<dyn MemoryProvider>, String> {
     create("linux")
 }
 
-#[cfg(not(any(target_os = "linux", target_os = "freebsd")))]
+#[cfg(not(any(target_os = "linux", target_os = "freebsd", target_os = "netbsd")))]
 fn create_auto() -> Result<Box<dyn MemoryProvider>, String> {
     Err(format!(
         "no memory provider available for {}",
@@ -96,6 +104,11 @@ fn create_auto() -> Result<Box<dyn MemoryProvider>, String> {
 #[cfg(target_os = "freebsd")]
 fn create_auto() -> Result<Box<dyn MemoryProvider>, String> {
     create("freebsd")
+}
+
+#[cfg(target_os = "netbsd")]
+fn create_auto() -> Result<Box<dyn MemoryProvider>, String> {
+    create("netbsd")
 }
 
 pub struct Unavailable {
