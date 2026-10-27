@@ -381,8 +381,77 @@ fn read_window_title(dir: &Path) -> Result<Option<String>, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{HyprClient, HyprClientWorkspace, urgent_workspace_ids, window_address};
-    use std::collections::HashSet;
+    use super::{
+        HyprClient, HyprClientWorkspace, handle_event, urgent_workspace_ids, window_address,
+    };
+    use std::{
+        collections::HashSet,
+        io::{Read, Write},
+        os::unix::net::UnixListener,
+        sync::{Arc, RwLock},
+        thread,
+        time::{Duration, Instant},
+    };
+
+    #[test]
+    fn workspace_urgent_and_window_events_refresh_state_and_title() {
+        let dir = tempfile::tempdir().unwrap();
+        let listener = UnixListener::bind(dir.path().join(".socket.sock")).unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let server = thread::spawn(move || {
+            let deadline = Instant::now() + Duration::from_secs(2);
+            for _ in 0..9 {
+                let mut stream = loop {
+                    match listener.accept() {
+                        Ok((stream, _)) => break stream,
+                        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                            assert!(
+                                Instant::now() < deadline,
+                                "timed out waiting for Hyprland request"
+                            );
+                            thread::sleep(Duration::from_millis(1));
+                        }
+                        Err(error) => panic!("could not accept Hyprland request: {error}"),
+                    }
+                };
+                let mut request = [0; 64];
+                let len = stream.read(&mut request).unwrap();
+                let response = match &request[..len] {
+                    b"j/workspaces" => {
+                        r#"[{"id":1,"name":"1","monitorID":0,"monitor":"DP-1"},{"id":2,"name":"2","monitorID":0,"monitor":"DP-1"}]"#
+                    }
+                    b"j/clients" => r#"[{"address":"0xabc123","workspace":{"id":2}}]"#,
+                    b"j/activeworkspace" => r#"{"id":1,"monitorID":0}"#,
+                    b"j/monitors" => r#"[{"name":"DP-1","activeWorkspace":{"id":1}}]"#,
+                    b"j/activewindow" => r#"{"title":"Editor"}"#,
+                    other => panic!("unexpected Hyprland request: {other:?}"),
+                };
+                stream.write_all(response.as_bytes()).unwrap();
+            }
+        });
+        let state = Arc::new(RwLock::new(None));
+        let title = RwLock::new(None);
+        let mut urgent = HashSet::new();
+
+        handle_event("workspace>>2", dir.path(), &state, &title, &mut urgent);
+        let initial = state.read().unwrap().clone().unwrap();
+        assert_eq!(initial.active_id, 1);
+        assert_eq!(initial.active_ids["DP-1"], 1);
+        assert!(!initial.workspaces[1].urgent);
+
+        handle_event("urgent>>abc123", dir.path(), &state, &title, &mut urgent);
+        assert!(state.read().unwrap().as_ref().unwrap().workspaces[1].urgent);
+
+        handle_event(
+            "activewindow>>Editor",
+            dir.path(),
+            &state,
+            &title,
+            &mut urgent,
+        );
+        assert_eq!(title.read().unwrap().as_deref(), Some("Editor"));
+        server.join().unwrap();
+    }
 
     #[test]
     fn urgent_event_address_matches_client_address() {

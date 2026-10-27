@@ -540,6 +540,11 @@ mod tests {
         popup.handle_event(SurfaceId(0), InputEvent::PointerLeave);
         assert!(!popup.should_close());
 
+        popup.pointer_leave_deadline = Some(Instant::now() - Duration::from_millis(1));
+        assert!(popup.should_close());
+
+        popup.pointer_leave_deadline = Some(Instant::now() + POINTER_LEAVE_GRACE);
+
         popup.handle_event(
             SurfaceId(0),
             InputEvent::PointerEnter {
@@ -547,6 +552,7 @@ mod tests {
                 output: None,
             },
         );
+        assert!(popup.pointer_leave_deadline.is_none());
         assert!(!popup.should_close());
     }
 }
