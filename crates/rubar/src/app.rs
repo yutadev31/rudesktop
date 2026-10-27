@@ -480,12 +480,20 @@ fn create_widget(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+
+    fn widget_ptr(widget: &dyn crate::widget::Widget) -> *const () {
+        widget as *const dyn crate::widget::Widget as *const ()
+    }
 
     #[test]
     fn failed_reload_preserves_existing_widgets() {
         let mut config = Config::default();
         config.widgets.left.push("clock".to_string());
         let mut app = App::new(&config).unwrap();
+        let original = widget_ptr(&*app.widgets.left[0]);
+        let revision = app.revision;
+        let surfaces = app.surfaces.clone();
 
         let mut invalid = config.clone();
         invalid.widgets.left = vec!["tray".to_string()];
@@ -493,18 +501,93 @@ mod tests {
 
         assert!(app.apply_config(&invalid).is_err());
         assert_eq!(app.widgets.left.len(), 1);
+        assert!(std::ptr::eq(original, widget_ptr(&*app.widgets.left[0])));
         assert_eq!(app.active_config, config);
+        assert_eq!(app.revision, revision);
+        assert_eq!(app.surfaces[0].size, surfaces[0].size);
     }
 
     #[test]
-    fn dormant_trays_are_discarded_when_provider_changes() {
-        let config = Config::default();
+    fn reload_reuses_moved_widgets_and_invalidates_cached_frames() {
+        let mut config = Config::default();
+        config.widgets.left = vec!["clock".to_string()];
         let mut app = App::new(&config).unwrap();
-        app.dormant_trays
-            .push(("tray".to_string(), Box::new(Clock::new(&config.clock))));
+        let original = widget_ptr(&*app.widgets.left[0]);
+        app.frames.insert(
+            None,
+            CachedFrame {
+                size: Size::new(100, 30),
+                revision: app.revision,
+                pixels: vec![0; 100 * 30 * 4],
+            },
+        );
 
         let mut updated = config.clone();
+        updated.widgets.left.clear();
+        updated.widgets.right = vec!["clock".to_string()];
         updated.style.font_size += 1.0;
+        app.apply_config(&updated).unwrap();
+        assert!(std::ptr::eq(original, widget_ptr(&*app.widgets.right[0])));
+        assert!(app.frames.is_empty());
+        assert_eq!(app.revision, 1);
+        assert!(!app.should_close());
+
+        updated.clock.format = Some("%H".to_string());
+        app.apply_config(&updated).unwrap();
+        assert!(!std::ptr::eq(original, widget_ptr(&*app.widgets.right[0])));
+
+        updated.style.height += 1;
+        app.apply_config(&updated).unwrap();
+        assert!(app.should_close());
+        assert_eq!(app.surfaces[0].size.height, updated.style.height);
+    }
+
+    #[test]
+    fn polling_config_applies_valid_changes_and_keeps_the_last_valid_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("rubar.toml");
+        let mut app = App::new(&Config::default()).unwrap();
+        app.config_path = Some(path.clone());
+        app.last_contents = None;
+
+        fs::write(&path, "[widgets]\nleft = ['clock']\n").unwrap();
+        app.last_config_check = Instant::now() - Duration::from_secs(1);
+        app.poll_config();
+        assert_eq!(app.active_config.widgets.left, ["clock"]);
+        assert_eq!(app.widgets.left.len(), 1);
+        let revision = app.revision;
+
+        fs::write(&path, "[style]\nheight = 0\n").unwrap();
+        app.last_config_check = Instant::now() - Duration::from_secs(1);
+        app.poll_config();
+        assert_eq!(app.active_config.widgets.left, ["clock"]);
+        assert_eq!(app.revision, revision);
+
+        fs::remove_file(&path).unwrap();
+        app.last_config_check = Instant::now() - Duration::from_secs(1);
+        app.poll_config();
+        assert_eq!(app.active_config, Config::default());
+        assert!(app.widgets.left.is_empty());
+    }
+
+    #[test]
+    fn dormant_trays_are_reused_only_with_the_same_provider() {
+        let mut config = Config::default();
+        config.widgets.left = vec!["tray".to_string()];
+        let mut app = App::new(&config).unwrap();
+        let original = widget_ptr(&*app.widgets.left[0]);
+
+        let mut updated = config.clone();
+        updated.widgets.left.clear();
+        app.apply_config(&updated).unwrap();
+        assert_eq!(app.dormant_trays.len(), 1);
+        assert!(std::ptr::eq(original, widget_ptr(&*app.dormant_trays[0].1)));
+
+        updated.widgets.right = vec!["tray".to_string()];
+        app.apply_config(&updated).unwrap();
+        assert!(std::ptr::eq(original, widget_ptr(&*app.widgets.right[0])));
+
+        updated.widgets.right.clear();
         app.apply_config(&updated).unwrap();
         assert_eq!(app.dormant_trays.len(), 1);
 
