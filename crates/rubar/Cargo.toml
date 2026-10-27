@@ -25,3 +25,9 @@ zbus.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+
+[target.'cfg(target_os = "netbsd")'.dependencies]
+libc.workspace = true
+
+[build-dependencies]
+cc = "1"

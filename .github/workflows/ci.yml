@@ -27,7 +27,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install --no-install-recommends --yes libpulse-dev libwayland-dev libxcb1-dev libxkbcommon-dev pkg-config
+        run: sudo apt-get update && sudo apt-get install --no-install-recommends --yes libpulse-dev libwayland-dev libxkbcommon-dev pkg-config
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -49,10 +49,37 @@ jobs:
       - name: Run Clippy
         run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 
+  netbsd:
+    name: NetBSD 10.1 amd64
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build and test on NetBSD
+        uses: vmactions/netbsd-vm@v1
+        with:
+          release: "10.1"
+          prepare: |
+            set -eu
+            ftp -o /tmp/xbase.tar.xz https://archive.NetBSD.org/pub/NetBSD-archive/NetBSD-10.1/amd64/binary/sets/xbase.tar.xz
+            test "$(sha512 -q /tmp/xbase.tar.xz)" = "b6ac2195f91d7ae395ec2734c9ae2a4727014629fbdc94562531225e0d51e3b2705047e8440fcf75e1dacdcecb3cb980df7a82f838c12ad5274ba8ce95e49b72"
+            tar -xf /tmp/xbase.tar.xz -C /
+            /usr/sbin/pkg_add rust pkgconf pulseaudio libxkbcommon wayland fontconfig dejavu-ttf
+          run: |
+            set -eu
+            export PATH="/usr/pkg/bin:$PATH"
+            export PKG_CONFIG_PATH="/usr/pkg/lib/pkgconfig:/usr/pkg/share/pkgconfig"
+            export LD_LIBRARY_PATH="/usr/pkg/lib:/usr/X11R7/lib"
+            export RUSTFLAGS="-C link-arg=-Wl,-rpath,/usr/X11R7/lib"
+            cargo check -p rubar --locked
+            cargo test -p rubar --locked
+
   release:
     name: Release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: check
+    needs: [check, netbsd]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -62,7 +89,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install --no-install-recommends --yes libpulse-dev libwayland-dev libxcb1-dev libxkbcommon-dev pkg-config
+        run: sudo apt-get update && sudo apt-get install --no-install-recommends --yes libpulse-dev libwayland-dev libxkbcommon-dev pkg-config
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable

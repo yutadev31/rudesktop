@@ -2,6 +2,8 @@
 mod freebsd;
 #[cfg(target_os = "linux")]
 mod linux;
+#[cfg(target_os = "netbsd")]
+mod netbsd;
 
 pub trait ProcessProvider {
     fn read(&mut self) -> Result<usize, String>;
@@ -13,6 +15,8 @@ enum ProviderKind {
     FreeBsd,
     #[cfg(target_os = "linux")]
     Linux,
+    #[cfg(target_os = "netbsd")]
+    NetBsd,
 }
 
 impl ProviderKind {
@@ -23,6 +27,8 @@ impl ProviderKind {
             "freebsd" => Ok(Self::FreeBsd),
             #[cfg(target_os = "linux")]
             "linux" => Ok(Self::Linux),
+            #[cfg(target_os = "netbsd")]
+            "netbsd" => Ok(Self::NetBsd),
             _ => Err(format!("unknown process provider `{name}`")),
         }
     }
@@ -39,6 +45,8 @@ pub fn create(name: &str) -> Result<Box<dyn ProcessProvider>, String> {
         ProviderKind::FreeBsd => Ok(Box::new(freebsd::KinfoProc)),
         #[cfg(target_os = "linux")]
         ProviderKind::Linux => Ok(Box::new(linux::ProcFs::new("/proc"))),
+        #[cfg(target_os = "netbsd")]
+        ProviderKind::NetBsd => Ok(Box::new(netbsd::KinfoProc)),
     }
 }
 
@@ -52,7 +60,12 @@ fn create_auto() -> Result<Box<dyn ProcessProvider>, String> {
     create("freebsd")
 }
 
-#[cfg(not(any(target_os = "linux", target_os = "freebsd")))]
+#[cfg(target_os = "netbsd")]
+fn create_auto() -> Result<Box<dyn ProcessProvider>, String> {
+    create("netbsd")
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "freebsd", target_os = "netbsd")))]
 fn create_auto() -> Result<Box<dyn ProcessProvider>, String> {
     Err(format!(
         "no process provider available for {}",

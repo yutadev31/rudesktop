@@ -17,7 +17,7 @@ use zbus::{
     zvariant::{OwnedObjectPath, OwnedValue, Structure, Value},
 };
 
-use crate::{color::parse_rgba, config::StyleConfig};
+use crate::{color::parse_rgba, config::StyleConfig, render::new_font_system};
 
 use super::sni::{ITEM_INTERFACE, SniItem};
 
@@ -260,7 +260,7 @@ impl MenuPopup {
             foreground: parse_rgba(&style.colors.text)?,
             font_size: style.font_size.max(1.0),
             font_family: style.font_family.clone(),
-            font_system: FontSystem::new(),
+            font_system: new_font_system(),
             swash_cache: SwashCache::new(),
         })
     }

@@ -114,12 +114,25 @@ impl PreparedItem {
     }
 }
 
+#[cfg(not(target_os = "netbsd"))]
+pub(crate) fn new_font_system() -> FontSystem {
+    FontSystem::new()
+}
+
+#[cfg(target_os = "netbsd")]
+pub(crate) fn new_font_system() -> FontSystem {
+    let mut font_system = FontSystem::new();
+    // fontdb does not search pkgsrc's default font directory on NetBSD.
+    font_system.db_mut().load_fonts_dir("/usr/pkg/share/fonts");
+    font_system
+}
+
 impl BarRenderer {
     pub fn new(config: &StyleConfig) -> Result<Self, String> {
         let [r, g, b, a] = parse_rgba(&config.colors.bg)?;
         let text = parse_rgba(&config.colors.text)?;
         Ok(Self {
-            font_system: FontSystem::new(),
+            font_system: new_font_system(),
             swash_cache: SwashCache::new(),
             config: config.clone(),
             background: Color::from_rgba8(r, g, b, a),

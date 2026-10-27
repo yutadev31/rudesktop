@@ -725,7 +725,7 @@ mod tests {
     };
 
     #[test]
-    fn ipc_request_times_out_when_accept_queue_is_full() {
+    fn ipc_request_does_not_block_when_accept_queue_is_full() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("i3.sock");
         let address = SockAddr::unix(&path).unwrap();
@@ -740,7 +740,12 @@ mod tests {
             client.set_nonblocking(true).unwrap();
             match client.connect(&address) {
                 Ok(()) => pending.push(client),
-                Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        io::ErrorKind::WouldBlock | io::ErrorKind::ConnectionRefused
+                    ) =>
+                {
                     queue_full = true;
                     break;
                 }
